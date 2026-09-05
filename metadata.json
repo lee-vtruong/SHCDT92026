@@ -1,0 +1,6 @@
+{
+  "name": "Trình Bày & Phản Biện Ý Tưởng",
+  "description": "Ứng dụng đếm ngược thời gian và chấm điểm chuyên nghiệp cho sinh hoạt chuyên đề tranh biện 10 đội thi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
