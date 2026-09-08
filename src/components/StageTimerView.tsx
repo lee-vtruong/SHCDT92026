@@ -18,8 +18,7 @@ import {
   Trash2,
   Lock,
   ShieldCheck,
-  Bell,
-  GraduationCap
+  Bell
 } from 'lucide-react';
 import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo, BuzzerRecord, TeamAccount } from '../types';
 import { 
@@ -46,7 +45,6 @@ interface StageTimerViewProps {
   onResetBuzzer?: () => void;
   onOpenTeamBuzzer?: () => void;
   currentTeamAuth?: TeamAccount | null;
-  onGoToJudges?: () => void;
 }
 
 const PHASE_DURATIONS: Record<RoundPhase, number> = {
@@ -94,7 +92,6 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   onResetBuzzer,
   onOpenTeamBuzzer,
   currentTeamAuth,
-  onGoToJudges,
 }) => {
   const [phase, setPhase] = useState<RoundPhase>('prepare');
   const [timeLeft, setTimeLeft] = useState<number>(PHASE_DURATIONS.prepare);
@@ -228,33 +225,6 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
       
-      {/* 0. Intro BGK Quick Banner */}
-      {onGoToJudges && (
-        <div className="bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-blue-500/10 border border-amber-300/60 rounded-2xl p-3 sm:px-4 flex items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-bold shadow-2xs">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <span className="font-bold text-slate-900 text-xs sm:text-sm truncate block">
-                Hội Đồng Ban Giám Khảo: Đ/c Nhựt Thanh • Đ/c Thu Hiền • Đ/c Văn Trường
-              </span>
-              <span className="text-[11px] text-slate-500 hidden sm:block">
-                Xem hình ảnh, chức vụ, thành tích và bật chế độ trình chiếu MC
-              </span>
-            </div>
-          </div>
-          <button
-            id="stage-banner-judges-btn"
-            onClick={onGoToJudges}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition-all shadow-xs shrink-0"
-          >
-            <span>Mở Trang BGK</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
       {/* 1. Team Selector Ribbon */}
       <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 mb-3">
@@ -264,19 +234,6 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               Lượt Thi Của Đội
             </span>
           </div>
-
-          <div className="flex items-center gap-2">
-            {onGoToJudges && (
-              <button
-                id="stage-header-goto-judges-btn"
-                onClick={onGoToJudges}
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition-all shadow-2xs"
-                title="Mở trang Giới Thiệu Ban Giám Khảo"
-              >
-                <GraduationCap className="w-3.5 h-3.5 text-amber-700" />
-                <span>⭐ Giới Thiệu BGK</span>
-              </button>
-            )}
 
             <div className="flex items-center gap-1">
               <button
@@ -302,7 +259,6 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               </button>
             </div>
           </div>
-        </div>
 
         {/* 10 Team Pills */}
         <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5 sm:gap-2">

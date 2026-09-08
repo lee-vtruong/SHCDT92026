@@ -553,7 +553,6 @@ export default function App() {
             onResetBuzzer={handleResetBuzzer}
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
-            onGoToJudges={() => setActiveTab('judges')}
           />
         )}
 
