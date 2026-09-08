@@ -14,12 +14,14 @@ import {
   Upload,
   ShieldCheck,
   KeyRound,
-  Lock
+  Lock,
+  GraduationCap,
+  Bell
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
-import { JudgeInfo } from '../types';
+import { JudgeInfo, TeamAccount } from '../types';
 
-export type ActiveTab = 'stage' | 'scoring' | 'leaderboard' | 'topics' | 'rules';
+export type ActiveTab = 'stage' | 'scoring' | 'leaderboard' | 'judges' | 'topics' | 'rules';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -33,6 +35,9 @@ interface HeaderProps {
   onOpenJudgeAuth: () => void;
   isAdmin?: boolean;
   onLogoutAdmin?: () => void;
+  onOpenTeamBuzzer?: () => void;
+  currentTeamAuth?: TeamAccount | null;
+  buzzerQueueCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,6 +52,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenJudgeAuth,
   isAdmin = false,
   onLogoutAdmin,
+  onOpenTeamBuzzer,
+  currentTeamAuth,
+  buzzerQueueCount = 0,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -144,6 +152,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              id="tab-judges-btn"
+              onClick={() => setActiveTab('judges')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'judges'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-bold'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <GraduationCap className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>Giới Thiệu BGK</span>
+            </button>
+
+            <button
               id="tab-topics-btn"
               onClick={() => setActiveTab('topics')}
               className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
@@ -172,6 +193,39 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Quick Utility Tools */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+
+            {/* Team Buzzer Button */}
+            {onOpenTeamBuzzer && (
+              <button
+                id="team-buzzer-header-btn"
+                onClick={onOpenTeamBuzzer}
+                title={
+                  currentTeamAuth
+                    ? `Đang đăng nhập: ${currentTeamAuth.name}. Bấm để mở chuông.`
+                    : 'Mở chuông bấm dành cho 10 Đội Thi'
+                }
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-xs ${
+                  currentTeamAuth
+                    ? 'bg-rose-50 border-rose-300 text-rose-800 hover:bg-rose-100'
+                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-200'
+                }`}
+              >
+                <div className="relative">
+                  <Bell className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  {buzzerQueueCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-600 animate-ping" />
+                  )}
+                </div>
+                <span className="truncate max-w-[85px] sm:max-w-none">
+                  {currentTeamAuth ? currentTeamAuth.name : 'Chuông 10 Đội'}
+                </span>
+                {buzzerQueueCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-mono font-bold">
+                    {buzzerQueueCount}
+                  </span>
+                )}
+              </button>
+            )}
             
             {/* Judge / Admin Auth Status Button */}
             {isAdmin ? (

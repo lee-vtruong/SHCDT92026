@@ -5,9 +5,11 @@ import { ScoringView } from './components/ScoringView';
 import { LeaderboardView } from './components/LeaderboardView';
 import { TopicsView } from './components/TopicsView';
 import { RulesView } from './components/RulesView';
+import { JudgesIntroView } from './components/JudgesIntroView';
 import { JudgeAuthModal } from './components/JudgeAuthModal';
 import { AdminResetModal } from './components/AdminResetModal';
-import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord } from './types';
+import { TeamBuzzerModal } from './components/TeamBuzzerModal';
+import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord } from './types';
 import { DEFAULT_TOPICS, INITIAL_TEAMS, generateRandomTeamTopicAssignment } from './data/defaultTopics';
 import { soundManager } from './utils/audio';
 import { authenticateJudge } from './utils/scoring';
@@ -19,6 +21,8 @@ const STORAGE_KEYS = {
   SOUND: 'chuyende_sound_v1',
   CURRENT_JUDGE: 'chuyende_judge_v1',
   IS_ADMIN: 'chuyende_is_admin_v2',
+  TEAM_AUTH: 'chuyende_team_auth_v1',
+  BUZZER_QUEUE: 'chuyende_buzzer_queue_v1',
 };
 
 export default function App() {
@@ -94,9 +98,53 @@ export default function App() {
     return true;
   });
 
+  // 5. Team Auth & Buzzer states
+  const [isTeamBuzzerModalOpen, setIsTeamBuzzerModalOpen] = useState<boolean>(false);
+  const [currentTeamAuth, setCurrentTeamAuth] = useState<TeamAccount | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.TEAM_AUTH);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
+  const [buzzerQueue, setBuzzerQueue] = useState<BuzzerRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.BUZZER_QUEUE);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
   // Active teams being viewed
   const [currentTeamId, setCurrentTeamId] = useState<number>(1);
   const [selectedScoringTeamId, setSelectedScoringTeamId] = useState<number>(1);
+
+  // Sync buzzer and team across tabs via StorageEvent
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.BUZZER_QUEUE) {
+        try {
+          if (e.newValue) {
+            const nextQueue: BuzzerRecord[] = JSON.parse(e.newValue);
+            setBuzzerQueue(nextQueue);
+            if (nextQueue.length > 0) {
+              soundManager.playBuzzer();
+            }
+          } else {
+            setBuzzerQueue([]);
+          }
+        } catch {}
+      } else if (e.key === STORAGE_KEYS.TEAM_AUTH) {
+        try {
+          setCurrentTeamAuth(e.newValue ? JSON.parse(e.newValue) : null);
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -147,6 +195,47 @@ export default function App() {
 
   const handleLogoutAdmin = () => {
     setIsAdmin(false);
+  };
+
+  // Handlers for Team Account & Buzzer
+  const handleLoginTeam = (acc: TeamAccount) => {
+    setCurrentTeamAuth(acc);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TEAM_AUTH, JSON.stringify(acc));
+    } catch {}
+  };
+
+  const handleLogoutTeam = () => {
+    setCurrentTeamAuth(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
+    } catch {}
+  };
+
+  const handleBuzz = (teamId: number, teamName: string) => {
+    setBuzzerQueue((prev) => {
+      if (prev.some((b) => b.teamId === teamId)) return prev;
+      const now = Date.now();
+      const firstTimestamp = prev.length > 0 ? prev[0].timestamp : now;
+      const newBuzz: BuzzerRecord = {
+        teamId,
+        teamName,
+        timestamp: now,
+        diffMs: now - firstTimestamp,
+      };
+      const next = [...prev, newBuzz];
+      try {
+        localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleResetBuzzer = () => {
+    setBuzzerQueue([]);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.BUZZER_QUEUE);
+    } catch {}
   };
 
   const handleLoginWithCode = (code: string): boolean => {
@@ -441,6 +530,9 @@ export default function App() {
         onOpenJudgeAuth={() => setIsJudgeModalOpen(true)}
         isAdmin={isAdmin}
         onLogoutAdmin={handleLogoutAdmin}
+        onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
+        currentTeamAuth={currentTeamAuth}
+        buzzerQueueCount={buzzerQueue.length}
       />
 
       {/* Main Content Area */}
@@ -457,6 +549,10 @@ export default function App() {
             onGoToScoring={handleGoToScoring}
             currentJudge={currentJudge}
             isAdmin={isAdmin}
+            buzzerQueue={buzzerQueue}
+            onResetBuzzer={handleResetBuzzer}
+            onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
+            currentTeamAuth={currentTeamAuth}
           />
         )}
 
@@ -490,6 +586,8 @@ export default function App() {
             onOpenAdminReset={() => setIsAdminResetModalOpen(true)}
           />
         )}
+
+        {activeTab === 'judges' && <JudgesIntroView />}
 
         {activeTab === 'topics' && (
           <TopicsView
@@ -559,6 +657,20 @@ export default function App() {
         isOpen={isAdminResetModalOpen}
         onClose={() => setIsAdminResetModalOpen(false)}
         onConfirmResetScores={handleAdminResetScores}
+      />
+
+      {/* 10 Teams Buzzer Modal */}
+      <TeamBuzzerModal
+        isOpen={isTeamBuzzerModalOpen}
+        onClose={() => setIsTeamBuzzerModalOpen(false)}
+        teams={teams}
+        currentTeamAuth={currentTeamAuth}
+        onLoginTeam={handleLoginTeam}
+        onLogoutTeam={handleLogoutTeam}
+        buzzerQueue={buzzerQueue}
+        onBuzz={handleBuzz}
+        onResetBuzzer={handleResetBuzzer}
+        presentingTeamId={currentTeamId}
       />
     </div>
   );

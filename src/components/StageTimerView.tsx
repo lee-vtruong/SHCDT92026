@@ -17,9 +17,10 @@ import {
   CheckCircle2,
   Trash2,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Bell
 } from 'lucide-react';
-import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo } from '../types';
+import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo, BuzzerRecord, TeamAccount } from '../types';
 import { 
   calculatePresentationTotal, 
   calculateRebuttalBonus, 
@@ -40,6 +41,10 @@ interface StageTimerViewProps {
   onGoToScoring: (teamId: number) => void;
   currentJudge?: JudgeInfo | null;
   isAdmin?: boolean;
+  buzzerQueue?: BuzzerRecord[];
+  onResetBuzzer?: () => void;
+  onOpenTeamBuzzer?: () => void;
+  currentTeamAuth?: TeamAccount | null;
 }
 
 const PHASE_DURATIONS: Record<RoundPhase, number> = {
@@ -83,6 +88,10 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   onGoToScoring,
   currentJudge,
   isAdmin = false,
+  buzzerQueue = [],
+  onResetBuzzer,
+  onOpenTeamBuzzer,
+  currentTeamAuth,
 }) => {
   const [phase, setPhase] = useState<RoundPhase>('prepare');
   const [timeLeft, setTimeLeft] = useState<number>(PHASE_DURATIONS.prepare);
@@ -290,6 +299,52 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
           })}
         </div>
       </div>
+
+      {/* 1.5 Live Buzzer Alert Banner on Stage */}
+      {buzzerQueue && buzzerQueue.length > 0 && (
+        <div className="bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 rounded-2xl p-4 sm:p-5 text-white shadow-xl border border-rose-400/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+              <Bell className="w-6 h-6 text-amber-200 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[11px] bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
+                  #1 NHANH NHẤT
+                </span>
+                <span className="text-xs text-rose-100 font-mono">
+                  {buzzerQueue.length} đội đã bấm chuông
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-white mt-1">
+                🔔 {buzzerQueue[0].teamName} ĐÃ BẤM CHUÔNG XIN PHẢN BIỆN!
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap self-end md:self-center">
+            <button
+              onClick={() => {
+                setSelectedDebaterTeamId(buzzerQueue[0].teamId);
+              }}
+              className="px-4 py-2 rounded-xl bg-white text-rose-700 hover:bg-rose-50 font-extrabold text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>Mời {buzzerQueue[0].teamName} Phản Biện</span>
+            </button>
+            {onResetBuzzer && (
+              <button
+                onClick={onResetBuzzer}
+                className="px-3 py-2 rounded-xl bg-black/25 hover:bg-black/40 text-white font-semibold text-xs transition-colors flex items-center gap-1.5"
+                title="Xóa danh sách chuông để mở lượt bấm mới"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Đặt lại chuông</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 2. Main Stage Stage Card */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -610,9 +665,21 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                   Phản Biện Trong Lượt Này
                 </h3>
               </div>
-              <span className="text-xs font-mono text-slate-500">
-                {currentRoundRebuttals.length} lượt đã ghi
-              </span>
+              <div className="flex items-center gap-2">
+                {onOpenTeamBuzzer && (
+                  <button
+                    onClick={onOpenTeamBuzzer}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs transition-colors"
+                    title="Mở giao diện chuông bấm cho các đội thi"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Chuông 10 Đội</span>
+                  </button>
+                )}
+                <span className="text-xs font-mono text-slate-500">
+                  {currentRoundRebuttals.length} lượt đã ghi
+                </span>
+              </div>
             </div>
 
             {/* List of recorded rebuttals in this round */}

@@ -1,4 +1,4 @@
-import { Team, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord } from '../types';
+import { Team, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount } from '../types';
 
 export const JUDGE_ACCOUNTS: JudgeInfo[] = [
   { id: 1, name: 'Giám khảo 1', code: 'SHCDT91', isBackup: false },
@@ -20,6 +20,33 @@ export const ADMIN_RESET_PASSWORD = 'admin123';
 export function verifyAdminPassword(inputCode: string): boolean {
   if (!inputCode) return false;
   return inputCode.trim() === ADMIN_RESET_PASSWORD;
+}
+
+export const TEAM_ACCOUNTS: TeamAccount[] = [
+  { id: 1, name: 'Đội 1', code: 'doi1' },
+  { id: 2, name: 'Đội 2', code: 'doi2' },
+  { id: 3, name: 'Đội 3', code: 'doi3' },
+  { id: 4, name: 'Đội 4', code: 'doi4' },
+  { id: 5, name: 'Đội 5', code: 'doi5' },
+  { id: 6, name: 'Đội 6', code: 'doi6' },
+  { id: 7, name: 'Đội 7', code: 'doi7' },
+  { id: 8, name: 'Đội 8', code: 'doi8' },
+  { id: 9, name: 'Đội 9', code: 'doi9' },
+  { id: 10, name: 'Đội 10', code: 'doi10' },
+];
+
+export function authenticateTeam(inputCode: string): TeamAccount | null {
+  if (!inputCode) return null;
+  const normalized = inputCode.trim().toLowerCase().replace(/\s+/g, '');
+  return (
+    TEAM_ACCOUNTS.find(
+      (t) =>
+        t.code === normalized ||
+        `team${t.id}` === normalized ||
+        `doi0${t.id}` === normalized ||
+        `nhom${t.id}` === normalized
+    ) || null
+  );
 }
 
 export const RUBRIC_CRITERIA_META = [

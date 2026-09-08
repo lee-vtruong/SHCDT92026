@@ -124,6 +124,39 @@ class SoundManager {
       });
     } catch {}
   }
+
+  // Team buzzer ring (game show bell / chime)
+  public playBuzzer() {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      // High-pitched bright chime ring
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(659.25, now); // E5
+      osc1.frequency.exponentialRampToValueAtTime(1318.51, now + 0.08); // E6
+
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(987.77, now); // B5
+
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.9);
+      osc2.stop(now + 0.9);
+    } catch {}
+  }
 }
 
 export const soundManager = new SoundManager();

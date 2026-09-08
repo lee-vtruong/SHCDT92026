@@ -60,3 +60,29 @@ export interface GameSettings {
   rebuttalDuration: number;  // 60s
   soundEnabled: boolean;
 }
+
+export interface JudgeProfile {
+  id: number;
+  name: string;
+  role: string;
+  subTitle: string;
+  avatarUrl: string;
+  fallbackColor: string;
+  achievements: string[];
+  bioQuote?: string;
+}
+
+export interface BuzzerRecord {
+  teamId: number;
+  teamName: string;
+  buzzedAt?: number;
+  timestamp: number;
+  diffMs?: number;
+}
+
+export interface TeamAccount {
+  id: number;
+  name: string;
+  code: string;
+}
+
