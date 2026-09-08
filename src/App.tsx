@@ -553,6 +553,7 @@ export default function App() {
             onResetBuzzer={handleResetBuzzer}
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
+            onGoToJudges={() => setActiveTab('judges')}
           />
         )}
 
@@ -587,7 +588,9 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'judges' && <JudgesIntroView />}
+        {activeTab === 'judges' && (
+          <JudgesIntroView onGoToStage={() => setActiveTab('stage')} />
+        )}
 
         {activeTab === 'topics' && (
           <TopicsView
@@ -602,38 +605,26 @@ export default function App() {
         {activeTab === 'rules' && <RulesView />}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200/80 bg-white/85 backdrop-blur py-4 px-4 text-xs text-slate-500 max-w-7xl mx-auto w-full">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-center md:text-left">
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-mono font-medium text-slate-700">SYS CORE: ONLINE</span>
-            <span className="text-slate-300">|</span>
-            <span>Sinh Hoạt Chuyên Đề: Trình Bày & Phản Biện (10 Đội)</span>
+      {/* Footer (Clean & Tidy) */}
+      <footer className="border-t border-slate-200/80 bg-white/85 backdrop-blur py-3 px-4 text-xs text-slate-500 max-w-7xl mx-auto w-full">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="font-medium text-slate-700">Sinh Hoạt Chuyên Đề: Trình Bày & Phản Biện (10 Đội)</span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center md:justify-end gap-3 font-mono text-[11px] text-slate-400">
-            <span>CHẾ ĐỘ ĐẾM 1-2-1 PHÚT • THANG 20đ + 4.5đ THƯỞNG</span>
-            <span className="text-slate-300 hidden sm:inline">•</span>
-            <div className="inline-flex items-center gap-1.5 text-slate-500 bg-slate-100/80 border border-slate-200/70 px-2.5 py-1 rounded-full">
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Web by</span>
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <span>Thang điểm 20 + 4.5 thưởng</span>
+            <span className="text-slate-300">•</span>
+            <div className="inline-flex items-center gap-1.5 text-slate-500">
+              <span>Web by</span>
               <a 
                 href="https://www.facebook.com/leev.truong/" 
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-bold text-slate-700 hover:text-cyan-700 transition-colors"
-                title="Facebook: leev.truong"
               >
                 leev.truong
-              </a>
-              <span className="text-slate-300">|</span>
-              <a 
-                href="https://www.facebook.com/leev.truong/" 
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-cyan-700 hover:text-cyan-800 hover:underline font-medium transition-colors"
-              >
-                contact
               </a>
             </div>
           </div>

@@ -13,7 +13,8 @@ import {
   CheckCircle2, 
   ShieldCheck,
   User,
-  Camera
+  Camera,
+  ArrowLeft
 } from 'lucide-react';
 import { JudgeProfile } from '../types';
 import { INITIAL_JUDGE_PROFILES } from '../data/judgeProfiles';
@@ -21,7 +22,11 @@ import { soundManager } from '../utils/audio';
 
 const STORAGE_KEY_PHOTOS = 'chuyende_judge_custom_photos_v1';
 
-export const JudgesIntroView: React.FC = () => {
+interface JudgesIntroViewProps {
+  onGoToStage?: () => void;
+}
+
+export const JudgesIntroView: React.FC<JudgesIntroViewProps> = ({ onGoToStage }) => {
   const [profiles, setProfiles] = useState<JudgeProfile[]>(INITIAL_JUDGE_PROFILES);
   const [customPhotos, setCustomPhotos] = useState<Record<number, string>>({});
   const [spotlightIndex, setSpotlightIndex] = useState<number | null>(null);
@@ -121,12 +126,22 @@ export const JudgesIntroView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {onGoToStage && (
+              <button
+                id="judges-back-to-stage-btn"
+                onClick={onGoToStage}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-sm border border-white/20 transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Quay Lại Sân Khấu</span>
+              </button>
+            )}
             <button
               onClick={() => openSpotlight(0)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition-all hover:scale-105 active:scale-95"
             >
               <Maximize2 className="w-4 h-4" />
-              <span>Trình Chiếu Giới Thiệu (MC)</span>
+              <span>Trình Chiếu MC</span>
             </button>
           </div>
         </div>

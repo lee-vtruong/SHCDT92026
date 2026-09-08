@@ -8,10 +8,7 @@ import {
   Volume2, 
   VolumeX, 
   Maximize2, 
-  RotateCcw,
   Sparkles,
-  Download,
-  Upload,
   ShieldCheck,
   KeyRound,
   Lock,
@@ -28,9 +25,9 @@ interface HeaderProps {
   setActiveTab: (tab: ActiveTab) => void;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
-  onOpenAdminReset: () => void;
-  onExportData: () => void;
-  onImportData: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenAdminReset?: () => void;
+  onExportData?: () => void;
+  onImportData?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   currentJudge: JudgeInfo | null;
   onOpenJudgeAuth: () => void;
   isAdmin?: boolean;
@@ -45,19 +42,14 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   soundEnabled,
   setSoundEnabled,
-  onOpenAdminReset,
-  onExportData,
-  onImportData,
   currentJudge,
   onOpenJudgeAuth,
   isAdmin = false,
-  onLogoutAdmin,
   onOpenTeamBuzzer,
   currentTeamAuth,
   buzzerQueueCount = 0,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -79,58 +71,48 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/90 text-slate-800 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 text-slate-800 shadow-xs">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
-          {/* Logo & Title */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 flex items-center justify-center shadow-md shadow-cyan-500/25 shrink-0 text-white">
-              <Sparkles className="w-5 h-5 font-black" />
+          {/* 1. Logo & Compact Title */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 flex items-center justify-center shadow-xs text-white shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 truncate">
-                  Trình Bày & Phản Biện
-                </h1>
-                <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-cyan-50 text-cyan-700 border border-cyan-200/80">
-                  // 10 ĐỘI THI
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 hidden sm:block truncate">
-                Sinh hoạt chuyên đề • Sân khấu đếm ngược & Chấm điểm trực tiếp
-              </p>
-            </div>
+            <span className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 whitespace-nowrap">
+              Trình Bày & Phản Biện
+            </span>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-1 scrollbar-none">
+          {/* 2. Navigation Tabs (Clean & Prominent) */}
+          <nav className="hidden md:flex items-center gap-1 sm:gap-1.5">
             <button
               id="tab-stage-btn"
               onClick={() => setActiveTab('stage')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
                 activeTab === 'stage'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <Timer className="w-4 h-4 shrink-0" />
-              <span>Bấm Giờ Sân Khấu</span>
+              <span>Sân Khấu</span>
             </button>
 
             <button
               id="tab-scoring-btn"
               onClick={() => setActiveTab('scoring')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
                 activeTab === 'scoring'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <Award className="w-4 h-4 shrink-0" />
-              <span>BGK Chấm Điểm</span>
+              <span>Chấm Điểm</span>
               {isAdmin ? (
-                <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 font-bold px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 font-bold px-1 py-0.2 rounded font-mono">
                   Admin
                 </span>
               ) : !currentJudge ? (
@@ -141,58 +123,60 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="tab-leaderboard-btn"
               onClick={() => setActiveTab('leaderboard')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
                 activeTab === 'leaderboard'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <Trophy className="w-4 h-4 shrink-0" />
-              <span>Bảng Xếp Hạng</span>
+              <span>Bảng Điểm</span>
             </button>
 
+            {/* ⭐ Tab Giới Thiệu BGK - Always Highlighted & Easy to Find */}
             <button
               id="tab-judges-btn"
               onClick={() => setActiveTab('judges')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                 activeTab === 'judges'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-bold'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm ring-2 ring-amber-300'
+                  : 'bg-amber-50/80 text-amber-900 border border-amber-200/90 hover:bg-amber-100 hover:border-amber-300'
               }`}
+              title="Xem thông tin và giới thiệu Hội đồng Ban Giám Khảo"
             >
-              <GraduationCap className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>Giới Thiệu BGK</span>
+              <GraduationCap className={`w-4 h-4 shrink-0 ${activeTab === 'judges' ? 'text-slate-950' : 'text-amber-600'}`} />
+              <span>⭐ Giới Thiệu BGK</span>
             </button>
 
             <button
               id="tab-topics-btn"
               onClick={() => setActiveTab('topics')}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'topics'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <BookOpen className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">16 Đề Bài</span>
+              <span>16 Đề</span>
             </button>
 
             <button
               id="tab-rules-btn"
               onClick={() => setActiveTab('rules')}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'rules'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <HelpCircle className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">Thể Lệ</span>
+              <span>Thể Lệ</span>
             </button>
           </nav>
 
-          {/* Quick Utility Tools */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* 3. Essential Tools (Cleaned & Minimalist) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 
             {/* Team Buzzer Button */}
             {onOpenTeamBuzzer && (
@@ -216,8 +200,8 @@ export const Header: React.FC<HeaderProps> = ({
                     <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-600 animate-ping" />
                   )}
                 </div>
-                <span className="truncate max-w-[85px] sm:max-w-none">
-                  {currentTeamAuth ? currentTeamAuth.name : 'Chuông 10 Đội'}
+                <span className="truncate max-w-[80px] sm:max-w-none">
+                  {currentTeamAuth ? currentTeamAuth.name : 'Chuông Đội'}
                 </span>
                 {buzzerQueueCount > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-mono font-bold">
@@ -227,41 +211,36 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
             
-            {/* Judge / Admin Auth Status Button */}
+            {/* Judge / Admin Auth Status */}
             {isAdmin ? (
               <button
                 id="admin-badge-btn"
                 onClick={onOpenJudgeAuth}
-                title="Đang đăng nhập: Quản Trị Viên (Toàn quyền sửa điểm 5 BGK). Nhấn để quản lý hoặc đăng xuất."
+                title="Đang đăng nhập Admin. Bấm để đăng xuất."
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-purple-100 border border-purple-300 text-purple-900 hover:bg-purple-200 transition-all shadow-xs"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-700 shrink-0" />
-                <span className="truncate max-w-[90px] sm:max-w-none">Admin (5 BGK)</span>
+                <span className="truncate max-w-[80px] sm:max-w-none">Admin</span>
               </button>
             ) : currentJudge ? (
               <button
                 id="judge-badge-btn"
                 onClick={onOpenJudgeAuth}
-                title={`Đang đăng nhập: ${currentJudge.name}. Nhấn để đổi hoặc đăng xuất.`}
+                title={`Đang đăng nhập: ${currentJudge.name}. Bấm để đổi hoặc đăng xuất.`}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-cyan-50 border border-cyan-300 text-cyan-800 hover:bg-cyan-100 transition-all shadow-xs"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                <span className="truncate max-w-[85px] sm:max-w-none">{currentJudge.name}</span>
-                {currentJudge.isBackup && (
-                  <span className="text-[10px] text-amber-600 bg-amber-100 px-1 py-0.2 rounded font-mono hidden sm:inline">
-                    DP
-                  </span>
-                )}
+                <span className="truncate max-w-[80px] sm:max-w-none">{currentJudge.name}</span>
               </button>
             ) : (
               <button
                 id="judge-login-btn"
                 onClick={onOpenJudgeAuth}
-                title="Nhập mật khẩu để mở quyền Ban Giám Khảo hoặc Admin"
+                title="Nhập mã để mở quyền Ban Giám Khảo hoặc Admin"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-cyan-50 text-slate-700 hover:text-cyan-800 border border-slate-200 hover:border-cyan-300 transition-all shadow-xs"
               >
                 <KeyRound className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span className="hidden sm:inline">Xác Thực BGK / Admin</span>
+                <span className="hidden sm:inline">Đăng Nhập BGK</span>
                 <span className="sm:hidden">BGK</span>
               </button>
             )}
@@ -270,64 +249,83 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="sound-toggle-btn"
               onClick={toggleSound}
-              title={soundEnabled ? 'Tắt âm thanh chuông báo' : 'Bật âm thanh chuông báo'}
-              className={`p-2 rounded-xl transition-all border ${
+              title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+              className={`p-1.5 sm:p-2 rounded-xl transition-all border ${
                 soundEnabled
-                  ? 'text-cyan-700 bg-cyan-50 border-cyan-200 hover:bg-cyan-100 shadow-xs'
+                  ? 'text-cyan-700 bg-cyan-50 border-cyan-200 hover:bg-cyan-100'
                   : 'text-slate-400 bg-slate-100 border-slate-200 hover:bg-slate-200'
               }`}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
 
-            {/* Fullscreen */}
+            {/* Fullscreen Mode */}
             <button
               id="fullscreen-toggle-btn"
               onClick={toggleFullscreen}
-              title="Toàn màn hình (Chế độ máy chiếu)"
-              className="p-2 rounded-xl text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-all hidden sm:flex"
+              title="Toàn màn hình máy chiếu"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-all hidden sm:flex"
             >
               <Maximize2 className="w-4 h-4" />
-            </button>
-
-            {/* Export / Backup dropdown or direct buttons */}
-            <button
-              id="export-data-btn"
-              onClick={onExportData}
-              title="Sao lưu dữ liệu giải đấu (JSON)"
-              className="p-2 rounded-xl text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-all hidden lg:flex"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-
-            <label
-              id="import-data-label"
-              title="Nạp dữ liệu đã lưu (JSON)"
-              className="p-2 rounded-xl text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-all cursor-pointer hidden lg:flex"
-            >
-              <Upload className="w-4 h-4" />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={onImportData}
-                className="hidden"
-              />
-            </label>
-
-            {/* Reset All Scores (Admin Protected) */}
-            <button
-              id="reset-all-btn"
-              onClick={onOpenAdminReset}
-              title="Khôi phục toàn bộ điểm số về 0 (Yêu cầu mật khẩu Admin: admin123)"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 transition-all shadow-2xs"
-            >
-              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden md:inline">Reset Điểm</span>
             </button>
           </div>
 
         </div>
+
+        {/* 4. Mobile / Tablet Navigation Sub-bar */}
+        <div className="md:hidden flex items-center gap-1 overflow-x-auto py-2 border-t border-slate-100 scrollbar-none">
+          <button
+            onClick={() => setActiveTab('stage')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 ${
+              activeTab === 'stage' ? 'bg-cyan-600 text-white' : 'text-slate-600 bg-slate-100'
+            }`}
+          >
+            Sân Khấu
+          </button>
+          <button
+            onClick={() => setActiveTab('scoring')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 ${
+              activeTab === 'scoring' ? 'bg-cyan-600 text-white' : 'text-slate-600 bg-slate-100'
+            }`}
+          >
+            Chấm Điểm
+          </button>
+          <button
+            onClick={() => setActiveTab('leaderboard')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 ${
+              activeTab === 'leaderboard' ? 'bg-cyan-600 text-white' : 'text-slate-600 bg-slate-100'
+            }`}
+          >
+            Bảng Điểm
+          </button>
+          <button
+            onClick={() => setActiveTab('judges')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 ${
+              activeTab === 'judges'
+                ? 'bg-amber-500 text-slate-950 font-extrabold'
+                : 'bg-amber-100 text-amber-900 border border-amber-300'
+            }`}
+          >
+            ⭐ Giới Thiệu BGK
+          </button>
+          <button
+            onClick={() => setActiveTab('topics')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 ${
+              activeTab === 'topics' ? 'bg-cyan-600 text-white' : 'text-slate-600 bg-slate-100'
+            }`}
+          >
+            16 Đề
+          </button>
+          <button
+            onClick={() => setActiveTab('rules')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 ${
+              activeTab === 'rules' ? 'bg-cyan-600 text-white' : 'text-slate-600 bg-slate-100'
+            }`}
+          >
+            Thể Lệ
+          </button>
+        </div>
+
       </div>
     </header>
   );
