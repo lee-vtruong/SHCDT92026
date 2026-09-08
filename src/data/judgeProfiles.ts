@@ -11,7 +11,8 @@ export const INITIAL_JUDGE_PROFILES: JudgeProfile[] = [
     achievements: [
       'Đảng ủy viên Chi bộ Sinh viên 5',
       'Cán bộ Đoàn - Hội tiêu biểu, giàu kinh nghiệm tổ chức các phong trào học thuật',
-      'Đánh giá sắc bén về tính khả thi và tư duy phản biện của các đội thi'
+      'Nghiên cứu viên Phòng Thí nghiệm Công nghệ phần mềm (SELab)',
+      'Sở hữu nhiều bài báo khoa học quốc tế'
     ],
     bioQuote: 'Tự tin bộc lộ cá tính, lập luận bằng lý lẽ và hành động bằng giải pháp thực tiễn.'
   },
@@ -19,10 +20,11 @@ export const INITIAL_JUDGE_PROFILES: JudgeProfile[] = [
     id: 2,
     name: 'Đồng chí Lê Thị Thu Hiền',
     role: 'Giám khảo 2 • Hội đồng Giám khảo',
-    subTitle: 'Cán bộ tiêu biểu • Chiến sĩ Mùa Hè Xanh',
+    subTitle: 'Đảng ủy viên Chi bộ Sinh viên 4',
     avatarUrl: '/assets/judges/gk2.jpg',
     fallbackColor: 'from-blue-500 to-cyan-600',
     achievements: [
+      'Đảng ủy viên Chi bộ Sinh viên 4',
       'Cán bộ Đoàn - Hội năng nổ, nhiệt huyết trong các chiến dịch tình nguyện',
       'Chiến sĩ tiêu biểu Chiến dịch Tình nguyện Mùa hè xanh HCMUS',
       'Đánh giá sâu sắc về kỹ năng truyền cảm hứng, tính cộng đồng và giá trị nhân văn của đề tài'
