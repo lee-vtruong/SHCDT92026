@@ -29,8 +29,8 @@ export interface RebuttalRecord {
   id: string;
   roundTeamId: number;           // Đội nào đang trình bày lúc phản biện xảy ra
   rebuttalTeamId: number;        // Đội thực hiện phản biện
-  level: RebuttalLevel;          // Mức 1 (+0.5), Mức 2 (+1.0), Mức 3 (+1.5), Không điểm (0)
-  score: number;                 // 0, 0.5, 1.0, 1.5
+  level: RebuttalLevel;          // Mức 1 (+3), Mức 2 (+7), Mức 3 (+10), Không điểm (0)
+  score: number;                 // 0, 3, 7, 10
   note?: string;                 // Ghi chú ngắn của BGK/MC
   timestamp: number;
 }

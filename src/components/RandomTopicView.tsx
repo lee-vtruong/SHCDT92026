@@ -25,7 +25,9 @@ interface RandomTopicViewProps {
   topics: Topic[];
   currentTeamId: number;
   onSelectTeam: (teamId: number) => void;
-  onAssignTopic: (teamId: number, topicId: number) => void;
+  onAssignTopic: (teamId: number, topicId: number | null, onlyCurrentTeam?: boolean) => void;
+  onClearOtherTopics?: (keepTeamId: number) => void;
+  onClearAllTopics?: () => void;
   onGoToStage: (teamId: number) => void;
 }
 
@@ -35,6 +37,8 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
   currentTeamId,
   onSelectTeam,
   onAssignTopic,
+  onClearOtherTopics,
+  onClearAllTopics,
   onGoToStage,
 }) => {
   const [selectedTeamId, setSelectedTeamId] = useState<number>(currentTeamId || 1);
@@ -44,6 +48,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
   const [justRevealedTopic, setJustRevealedTopic] = useState<Topic | null>(null);
   const [drawMode, setDrawMode] = useState<'roulette' | 'envelopes'>('roulette');
   const [avoidAssignedTopics, setAvoidAssignedTopics] = useState(true);
+  const [onlyCurrentTeamHasTopic, setOnlyCurrentTeamHasTopic] = useState(true);
 
   const spinIntervalRef = useRef<number | null>(null);
 
@@ -54,8 +59,17 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
     }
   }, [currentTeamId]);
 
-  const selectedTeam = teams.find((t) => t.id === selectedTeamId) || teams[0];
+  const selectedTeam =
+    teams.find((t) => t.id === selectedTeamId) ||
+    teams[0] || {
+      id: 1,
+      name: 'Đội 1',
+      topicId: null,
+      presentationScores: { topicUnderstanding: 0, argumentation: 0, feasibility: 0, creativity: 0, presentationSkills: 0 },
+      hasPresented: false,
+    };
   const currentAssignedTopic = topics.find((t) => t.id === selectedTeam?.topicId);
+  const activeTopic = justRevealedTopic || currentAssignedTopic;
 
   // Topics currently assigned to other teams
   const assignedTopicIds = teams
@@ -118,7 +132,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
         // Final reveal!
         setIsSpinning(false);
         setJustRevealedTopic(chosenTopic);
-        onAssignTopic(selectedTeamId, chosenTopic.id);
+        onAssignTopic(selectedTeamId, chosenTopic.id, onlyCurrentTeamHasTopic);
         soundManager.playScoreAward();
         triggerConfetti();
       }
@@ -131,7 +145,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
   const handleEnvelopeClick = (topic: Topic) => {
     if (isSpinning) return;
     setJustRevealedTopic(topic);
-    onAssignTopic(selectedTeamId, topic.id);
+    onAssignTopic(selectedTeamId, topic.id, onlyCurrentTeamHasTopic);
     soundManager.playScoreAward();
     triggerConfetti();
   };
@@ -186,6 +200,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
 
             {/* Avoid Duplicate Toggle */}
             <button
+              type="button"
               onClick={() => setAvoidAssignedTopics(!avoidAssignedTopics)}
               className={`px-3 py-2 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
                 avoidAssignedTopics
@@ -197,20 +212,68 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
               {avoidAssignedTopics ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
               <span>{avoidAssignedTopics ? 'Tránh Trùng Đề (Bật)' : 'Tránh Trùng (Tắt)'}</span>
             </button>
+
+            {/* Only Current Team Has Topic Toggle */}
+            <button
+              type="button"
+              onClick={() => setOnlyCurrentTeamHasTopic(!onlyCurrentTeamHasTopic)}
+              className={`px-3 py-2 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                onlyCurrentTeamHasTopic
+                  ? 'bg-cyan-500/25 border-cyan-300 text-cyan-200 ring-1 ring-cyan-400/40'
+                  : 'bg-white/10 border-white/20 text-slate-300'
+              }`}
+              title="Khi bốc thăm, chỉ đội hiện tại có đề, các đội còn lại sẽ chưa có đề"
+            >
+              <CheckCircle2 className={`w-3.5 h-3.5 ${onlyCurrentTeamHasTopic ? 'text-cyan-300' : 'text-slate-400'}`} />
+              <span>{onlyCurrentTeamHasTopic ? 'Chỉ Đội Hiện Tại Có Đề (Bật)' : 'Chỉ Đội Này Có Đề (Tắt)'}</span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Team Selection Bar */}
       <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
             <Users className="w-4 h-4 text-cyan-600" />
             <span>Chọn Đội Lên Sân Khấu Bốc Đề:</span>
           </div>
-          <span className="text-xs text-slate-500 font-mono">
-            {teams.filter((t) => t.topicId).length}/10 đội đã có đề
-          </span>
+
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="text-xs text-slate-500 font-mono">
+              {teams.filter((t) => t.topicId).length}/10 đội đã có đề
+            </span>
+
+            {onClearOtherTopics && teams.some((t) => t.id !== selectedTeamId && t.topicId !== null) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClearOtherTopics(selectedTeamId);
+                  soundManager.playDing();
+                }}
+                className="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all flex items-center gap-1"
+                title={`Chỉ giữ đề của ${selectedTeam.name}, đặt lại các đội còn lại về chưa có đề`}
+              >
+                <RotateCcw className="w-3 h-3 text-amber-600" />
+                <span>Chỉ giữ đề {selectedTeam.name}</span>
+              </button>
+            )}
+
+            {onClearAllTopics && teams.some((t) => t.topicId !== null) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClearAllTopics();
+                  setJustRevealedTopic(null);
+                  soundManager.playDing();
+                }}
+                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 border border-slate-200 text-xs font-semibold transition-all flex items-center gap-1"
+                title="Xóa đề tất cả 10 đội để các đội bốc thăm lại từ đầu"
+              >
+                <span>Xóa đề tất cả 10 đội</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2">
@@ -287,10 +350,10 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
                     </div>
                     <p className="text-xs text-slate-400 font-mono">Hệ thống đang lựa chọn ngẫu nhiên...</p>
                   </div>
-                ) : justRevealedTopic || currentAssignedTopic ? (
+                ) : activeTopic ? (
                   /* Display Chosen Topic */
                   (() => {
-                    const t = justRevealedTopic || currentAssignedTopic!;
+                    const t = activeTopic;
                     return (
                       <div className="space-y-3 text-left w-full">
                         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -342,24 +405,40 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
                   <span>
                     {isSpinning
                       ? 'Đang Quay Đề...'
-                      : justRevealedTopic || currentAssignedTopic
+                      : activeTopic
                       ? 'Bốc Thăm Lại'
                       : `Bấm Bốc Thăm Đề Cho ${selectedTeam.name}`}
                   </span>
                 </button>
 
-                {(justRevealedTopic || currentAssignedTopic) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onGoToStage(selectedTeamId);
-                    }}
-                    className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>Lên Sân Khấu & Đếm Giờ (1 Phút Chuẩn Bị)</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                {activeTopic && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onGoToStage(selectedTeamId);
+                      }}
+                      className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span>Lên Sân Khấu & Đếm Giờ (1 Phút Chuẩn Bị)</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAssignTopic(selectedTeamId, null);
+                        setJustRevealedTopic(null);
+                        soundManager.playDing();
+                      }}
+                      className="w-full sm:w-auto px-4 py-4 rounded-2xl bg-slate-800 hover:bg-rose-950/60 hover:border-rose-700/50 text-slate-300 hover:text-rose-200 text-xs font-bold transition-all border border-slate-700 flex items-center justify-center gap-1.5"
+                      title={`Hủy đề của ${selectedTeam.name} (trả về chưa có đề)`}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Hủy đề {selectedTeam.name}</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -434,18 +513,18 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
             </div>
           )}
 
-          {/* Suggested Questions / Debate Angles for the Revealed Topic */}
-          {(justRevealedTopic || currentAssignedTopic) && (
+          {/* Guiding Questions / Debate Angles for the Revealed Topic */}
+          {activeTopic && activeTopic.guidingQuestions && activeTopic.guidingQuestions.length > 0 && (
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-3">
               <div className="flex items-center gap-2 text-cyan-700">
                 <HelpCircle className="w-4 h-4" />
                 <h4 className="font-extrabold text-sm text-slate-900">
-                  Gợi Ý Định Hướng Trình Bày & Lập Luận:
+                  Gợi Ý Định Hướng Trình Bày & Lập Luận ({activeTopic.title}):
                 </h4>
               </div>
 
               <div className="space-y-2">
-                {(justRevealedTopic || currentAssignedTopic)!.suggestedQuestions.map((q, idx) => (
+                {activeTopic.guidingQuestions.map((q, idx) => (
                   <div
                     key={idx}
                     className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 flex items-start gap-2.5"

@@ -184,13 +184,11 @@ export function generateRandomTeamTopicAssignment(): number[] {
   return allIds; // First 10 for Team 1..10, last 6 are backup
 }
 
-// Initial 10 teams with 10 randomly assigned topics out of 16
-const initialShuffledIds = generateRandomTeamTopicAssignment();
-
+// Initial 10 teams start with NO assigned topic (teams draw topics on stage)
 export const INITIAL_TEAMS: Team[] = Array.from({ length: 10 }, (_, index) => ({
   id: index + 1,
   name: `Đội ${index + 1}`,
-  topicId: initialShuffledIds[index],
+  topicId: null,
   presentationScores: { ...INITIAL_RUBRIC_SCORES },
   hasPresented: false,
   presentationNotes: "",

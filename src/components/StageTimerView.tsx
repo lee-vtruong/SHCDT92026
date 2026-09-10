@@ -571,11 +571,11 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs font-bold text-cyan-700 font-mono">
-                  Điểm trình bày: {calculatePresentationTotal(currentTeam.presentationScores)} / 20đ
+                  Điểm trình bày: {calculatePresentationTotal(currentTeam.presentationScores)} / 120đ
                 </span>
                 <span className="text-xs text-slate-300">•</span>
                 <span className="text-xs font-semibold text-emerald-700 font-mono">
-                  Tổng điểm đội hiện tại: {calculateOverallTotal(currentTeam, rebuttals)}đ
+                  Tổng điểm đội hiện tại: {calculateOverallTotal(currentTeam, rebuttals)} / 150đ
                 </span>
               </div>
             </div>
@@ -622,7 +622,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                   // {currentTopic?.category || 'CHUYÊN ĐỀ TRANH LUẬN'}
                 </span>
                 <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                  {currentTeam.name}: Đề #{currentTopic?.id || currentTeam.id}
+                  {currentTeam.name}: {currentTopic ? `Đề #${currentTopic.id}` : 'Chưa Bốc Thăm Đề'}
                 </h2>
               </div>
               <span className="text-xs font-mono font-bold px-2 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200">
@@ -630,30 +630,48 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               </span>
             </div>
 
-            <p className="text-sm font-semibold text-slate-800 leading-relaxed mb-4 bg-sky-50/70 p-3.5 rounded-2xl border border-sky-100">
-              "{currentTopic?.title}"
-            </p>
+            {currentTopic ? (
+              <>
+                <p className="text-sm font-semibold text-slate-800 leading-relaxed mb-4 bg-sky-50/70 p-3.5 rounded-2xl border border-sky-100">
+                  "{currentTopic.title}"
+                </p>
 
-            {currentTopic?.description && (
-              <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-                {currentTopic.description}
-              </p>
-            )}
+                {currentTopic.description && (
+                  <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+                    {currentTopic.description}
+                  </p>
+                )}
 
-            {/* Guiding Questions */}
-            {currentTopic?.guidingQuestions && currentTopic.guidingQuestions.length > 0 && (
-              <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
-                  Câu hỏi định hướng:
-                </span>
-                <ul className="space-y-1 text-xs text-slate-600">
-                  {currentTopic.guidingQuestions.map((q, idx) => (
-                    <li key={idx} className="flex items-start gap-1.5">
-                      <span className="text-cyan-600 font-bold">•</span>
-                      <span>{q}</span>
-                    </li>
-                  ))}
-                </ul>
+                {/* Guiding Questions */}
+                {currentTopic.guidingQuestions && currentTopic.guidingQuestions.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
+                      Câu hỏi định hướng:
+                    </span>
+                    <ul className="space-y-1 text-xs text-slate-600">
+                      {currentTopic.guidingQuestions.map((q, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className="text-cyan-600 font-bold">•</span>
+                          <span>{q}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-200 text-center space-y-2.5 my-2">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                  <Shuffle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-amber-900">
+                    {currentTeam.name} Chưa Có Đề Thi
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Đội hiện tại chưa bốc thăm đề. Bấm nút dưới để mở màn hình bốc thăm.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -662,10 +680,18 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               <button
                 id="stage-goto-random-topic-btn"
                 onClick={() => onGoToRandomTopic(currentTeam.id)}
-                className="mt-3 w-full py-2 px-3 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                className={`mt-3 w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                  currentTopic
+                    ? 'bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-800'
+                    : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20'
+                }`}
               >
-                <Shuffle className="w-3.5 h-3.5 text-cyan-600" />
-                <span>🎲 Bốc Thăm / Đổi Đề Ngẫu Nhiên ({currentTeam.name})</span>
+                <Shuffle className="w-3.5 h-3.5" />
+                <span>
+                  {currentTopic
+                    ? `🎲 Bốc Thăm / Đổi Đề Cho ${currentTeam.name}`
+                    : `🎲 Bốc Thăm Đề Cho ${currentTeam.name} Ngay`}
+                </span>
               </button>
             )}
           </div>
@@ -839,21 +865,21 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                   {
                     level: 'valid' as RebuttalLevel,
                     title: 'Mức 1 – Hợp lệ (+3đ)',
-                    desc: 'Phản biện đúng chủ đề, chỉ ra điểm cần làm rõ cơ bản (gốc 0.5đ quy đổi 3.3đ làm tròn 3đ).',
+                    desc: 'Phản biện đúng chủ đề, chỉ ra điểm cần làm rõ cơ bản (+3 điểm).',
                     border: 'hover:border-blue-400',
                     active: 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-200',
                   },
                   {
                     level: 'sharp' as RebuttalLevel,
                     title: 'Mức 2 – Sắc sảo (+7đ)',
-                    desc: 'Chạm điểm yếu/giả định quan trọng, có lý do rõ ràng (gốc 1.0đ quy đổi 6.7đ làm tròn 7đ).',
+                    desc: 'Chạm điểm yếu/giả định quan trọng trong lập luận (+7 điểm).',
                     border: 'hover:border-amber-400',
                     active: 'border-amber-500 bg-amber-50/80 text-amber-900 ring-2 ring-amber-200',
                   },
                   {
                     level: 'excellent' as RebuttalLevel,
                     title: 'Mức 3 – Xuất sắc (+10đ)',
-                    desc: 'Ngắn gọn nhưng sâu, phát hiện mâu thuẫn cốt lõi (gốc 1.5đ quy đổi 10đ).',
+                    desc: 'Ngắn gọn nhưng sâu sắc, phát hiện mâu thuẫn cốt lõi (+10 điểm).',
                     border: 'hover:border-emerald-400',
                     active: 'border-emerald-500 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-200',
                   },

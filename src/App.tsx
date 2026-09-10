@@ -57,7 +57,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 10) {
           // Check if migration to 150 scale is needed
-          return parsed.map((team: Team) => {
+          const migrated = parsed.map((team: Team) => {
             const s = team.presentationScores;
             const needsMigration = s && (s.topicUnderstanding <= 4 && s.argumentation <= 5 && (s.topicUnderstanding + s.argumentation + s.feasibility + s.creativity + s.presentationSkills) > 0);
             if (needsMigration) {
@@ -100,6 +100,26 @@ export default function App() {
             }
             return team;
           });
+
+          // Check if all teams had pre-assigned topics from legacy initial state
+          // If so and no team has presented yet, reset topicId to null so teams draw fresh
+          const hasScoresOrPresented = migrated.some(
+            (t: Team) =>
+              t.hasPresented ||
+              (t.presentationScores &&
+                (t.presentationScores.topicUnderstanding +
+                  t.presentationScores.argumentation +
+                  t.presentationScores.feasibility +
+                  t.presentationScores.creativity +
+                  t.presentationScores.presentationSkills) > 0)
+          );
+          const legacyInitKey = 'v2_topics_undrawn_cleared';
+          if (!localStorage.getItem(legacyInitKey) && !hasScoresOrPresented) {
+            localStorage.setItem(legacyInitKey, 'true');
+            return migrated.map((t: Team) => ({ ...t, topicId: null }));
+          }
+
+          return migrated;
         }
       }
     } catch {}
@@ -467,8 +487,20 @@ export default function App() {
     );
   };
 
-  const handleAssignTopic = (teamId: number, topicId: number) => {
+  const handleAssignTopic = (
+    teamId: number,
+    topicId: number | null,
+    onlyCurrentTeam: boolean = true
+  ) => {
     setTeams((prev) => {
+      if (onlyCurrentTeam) {
+        // Đội hiện tại có đề, các đội còn lại sẽ chưa có đề (topicId: null)
+        return prev.map((t) => ({
+          ...t,
+          topicId: t.id === teamId ? topicId : null,
+        }));
+      }
+
       const previousTeamWithTopic = prev.find((t) => t.topicId === topicId && t.id !== teamId);
       const currentTeam = prev.find((t) => t.id === teamId);
       const currentTopic = currentTeam?.topicId ?? null;
@@ -485,6 +517,20 @@ export default function App() {
     });
   };
 
+  // Clear topics of all other teams (only keep current team)
+  const handleClearOtherTopics = (keepTeamId: number) => {
+    setTeams((prev) =>
+      prev.map((t) => (t.id === keepTeamId ? t : { ...t, topicId: null }))
+    );
+  };
+
+  // Clear topics of all 10 teams (reset for drawing from scratch)
+  const handleClearAllTopics = () => {
+    setTeams((prev) =>
+      prev.map((t) => ({ ...t, topicId: null }))
+    );
+  };
+
   // Navigation shortcut from Stage to Scoring
   const handleGoToScoring = (teamId: number) => {
     setSelectedScoringTeamId(teamId);
@@ -493,12 +539,10 @@ export default function App() {
 
   // Reset scores to 0 (Protected by admin password admin123)
   const handleAdminResetScores = (resetTopicsAlso: boolean = false) => {
-    const newTopicIds = resetTopicsAlso ? generateRandomTeamTopicAssignment() : null;
-
     setTeams((prev) =>
-      prev.map((team, index) => ({
+      prev.map((team) => ({
         ...team,
-        topicId: newTopicIds ? newTopicIds[index] : team.topicId,
+        topicId: resetTopicsAlso ? null : team.topicId,
         judgeScores: {},
         presentationScores: {
           topicUnderstanding: 0,
@@ -651,6 +695,8 @@ export default function App() {
             currentTeamId={currentTeamId}
             onSelectTeam={(teamId) => setCurrentTeamId(teamId)}
             onAssignTopic={handleAssignTopic}
+            onClearOtherTopics={handleClearOtherTopics}
+            onClearAllTopics={handleClearAllTopics}
             onGoToStage={(teamId) => {
               setCurrentTeamId(teamId);
               setActiveTab('stage');

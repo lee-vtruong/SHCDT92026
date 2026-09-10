@@ -660,7 +660,7 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                       <span className="text-lg font-black text-emerald-800 font-mono">
                         {scoreTotal?.toFixed(1)}
                       </span>
-                      <span className="text-[10px] text-slate-400">/ 20đ</span>
+                      <span className="text-[10px] text-slate-400">/ 120đ</span>
                       <Check className="w-3.5 h-3.5 text-emerald-600 ml-auto" />
                     </div>
                   ) : (
@@ -725,7 +725,13 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                   {currentTeam.name}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Đề số #{currentTopic?.id}: <span className="text-slate-800 font-semibold">{currentTopic?.title}</span>
+                  {currentTopic ? (
+                    <>
+                      Đề số #{currentTopic.id}: <span className="text-slate-800 font-semibold">{currentTopic.title}</span>
+                    </>
+                  ) : (
+                    <span className="text-amber-600 italic font-medium">Chưa bốc thăm đề tài</span>
+                  )}
                 </p>
               </div>
 
@@ -1051,27 +1057,35 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
             <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
               // THAM KHẢO ĐỀ THI
             </span>
-            <h4 className="text-sm font-bold text-slate-900 leading-snug">
-              {currentTopic?.title}
-            </h4>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              {currentTopic?.description}
-            </p>
+            {currentTopic ? (
+              <>
+                <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                  Đề #{currentTopic.id}: {currentTopic.title}
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {currentTopic.description}
+                </p>
 
-            {currentTopic?.guidingQuestions && (
-              <div className="pt-2 border-t border-slate-100 space-y-1">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-                  Gợi ý đánh giá:
-                </span>
-                <ul className="text-xs text-slate-600 space-y-1">
-                  {currentTopic.guidingQuestions.map((q, i) => (
-                    <li key={i} className="flex items-start gap-1 text-[11px]">
-                      <span className="text-cyan-600 font-bold">•</span>
-                      <span>{q}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                {currentTopic.guidingQuestions && (
+                  <div className="pt-2 border-t border-slate-100 space-y-1">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                      Gợi ý đánh giá:
+                    </span>
+                    <ul className="text-xs text-slate-600 space-y-1">
+                      {currentTopic.guidingQuestions.map((q, i) => (
+                        <li key={i} className="flex items-start gap-1 text-[11px]">
+                          <span className="text-cyan-600 font-bold">•</span>
+                          <span>{q}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-amber-700 italic bg-amber-50 p-3 rounded-xl border border-amber-200">
+                Đội này chưa bốc thăm đề tài.
+              </p>
             )}
           </div>
 
@@ -1147,9 +1161,9 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
               <span>Quy tắc xếp hạng & phân xử:</span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-600">
-              1. Tổng điểm cao hơn xếp trên.<br/>
-              2. Nếu bằng điểm, ưu tiên điểm <strong>Phần trình bày (/20)</strong>.<br/>
-              3. Nếu vẫn bằng, ưu tiên tiêu chí <strong>"Lập luận & tư duy phản biện" (/5)</strong>.
+              1. Tổng điểm cao hơn xếp trên (Thang 150đ).<br/>
+              2. Nếu bằng điểm, ưu tiên điểm <strong>Phần trình bày (/120đ)</strong>.<br/>
+              3. Nếu vẫn bằng, ưu tiên tiêu chí <strong>"Lập luận & tư duy phản biện" (/30đ)</strong>.
             </p>
           </div>
 
