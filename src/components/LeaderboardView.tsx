@@ -49,15 +49,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       'Hạng',
       'Đội Thi',
       'Đề Tài',
-      'Hiểu Đề (/4)',
-      'Lập Luận (/5)',
-      'Khả Thi (/4)',
-      'Sáng Tạo (/3)',
-      'Kỹ Năng Trình Bày (/4)',
-      'Tổng Trình Bày (/20)',
+      'Hiểu Đề (/24)',
+      'Lập Luận (/30)',
+      'Khả Thi (/24)',
+      'Sáng Tạo (/18)',
+      'Kỹ Năng Trình Bày (/24)',
+      'Tổng Trình Bày (/120)',
       'Số Lần Phản Biện (/3)',
-      'Điểm Thưởng Phản Biện (/4.5)',
-      'Tổng Điểm Chung Cuộc (/24.5)',
+      'Điểm Thưởng Phản Biện (/30)',
+      'Tổng Điểm Chung Cuộc (/150)',
       'Trạng Thái',
     ];
 
@@ -415,15 +415,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             {/* Rubric Breakdown */}
             <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                5 TIÊU CHÍ TRÌNH BÀY (TỐI ĐA 20 ĐIỂM):
+                5 TIÊU CHÍ TRÌNH BÀY (TỐI ĐA 120 ĐIỂM):
               </span>
 
               {[
-                { label: '1. Hiểu đề & bám sát vấn đề', val: inspectTeam.team.presentationScores.topicUnderstanding, max: 4 },
-                { label: '2. Lập luận & tư duy phản biện (Ưu tiên)', val: inspectTeam.team.presentationScores.argumentation, max: 5, highlight: true },
-                { label: '3. Tính khả thi / giá trị giải pháp', val: inspectTeam.team.presentationScores.feasibility, max: 4 },
-                { label: '4. Tính sáng tạo', val: inspectTeam.team.presentationScores.creativity, max: 3 },
-                { label: '5. Kỹ năng trình bày & thời gian', val: inspectTeam.team.presentationScores.presentationSkills, max: 4 },
+                { label: '1. Hiểu đề & bám sát vấn đề', val: inspectTeam.effectiveScores.topicUnderstanding, max: 24 },
+                { label: '2. Lập luận & tư duy phản biện (Ưu tiên)', val: inspectTeam.effectiveScores.argumentation, max: 30, highlight: true },
+                { label: '3. Tính khả thi / giá trị giải pháp', val: inspectTeam.effectiveScores.feasibility, max: 24 },
+                { label: '4. Tính sáng tạo', val: inspectTeam.effectiveScores.creativity, max: 18 },
+                { label: '5. Kỹ năng trình bày & thời gian', val: inspectTeam.effectiveScores.presentationSkills, max: 24 },
               ].map((item, idx) => (
                 <div
                   key={idx}
@@ -441,7 +441,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-slate-900">
                 <span>Tổng Điểm Trình Bày (Trung bình cộng):</span>
                 <span className="font-mono text-cyan-700 text-sm">
-                  {inspectTeam.presentationTotal} / 20đ
+                  {inspectTeam.presentationTotal} / 120đ
                 </span>
               </div>
             </div>
@@ -495,7 +495,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   LỊCH SỬ PHẢN BIỆN ({inspectTeam.rebuttalsUsed}/3 LƯỢT):
                 </span>
                 <span className="font-mono text-cyan-700 text-sm font-bold">
-                  +{inspectTeam.rebuttalBonus} / 4.5đ
+                  +{inspectTeam.rebuttalBonus} / 30đ
                 </span>
               </div>
 

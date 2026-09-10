@@ -159,11 +159,11 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
   const handleApplyPreset = (percentage: number) => {
     if (!canEdit) return; // Strict lock
     const newScores: RubricScores = {
-      topicUnderstanding: Number((4 * percentage).toFixed(2)),
-      argumentation: Number((5 * percentage).toFixed(2)),
-      feasibility: Number((4 * percentage).toFixed(2)),
-      creativity: Number((3 * percentage).toFixed(2)),
-      presentationSkills: Number((4 * percentage).toFixed(2)),
+      topicUnderstanding: Number((24 * percentage).toFixed(1)),
+      argumentation: Number((30 * percentage).toFixed(1)),
+      feasibility: Number((24 * percentage).toFixed(1)),
+      creativity: Number((18 * percentage).toFixed(1)),
+      presentationSkills: Number((24 * percentage).toFixed(1)),
     };
     setScores(newScores);
   };
@@ -744,11 +744,11 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                   <span className="text-4xl font-black text-slate-900 font-mono">
                     {canEdit ? activeJudgeScore.toFixed(1) : effectivePresentationTotal.toFixed(1)}
                   </span>
-                  <span className="text-sm font-bold text-slate-400">/ 20đ</span>
+                  <span className="text-sm font-bold text-slate-400">/ 120đ</span>
                 </div>
                 <div className="text-[11px] text-cyan-700 font-medium font-mono mt-1">
-                  + {teamRebuttalBonus}đ phản biện = <strong className="text-slate-900">
-                    {((canEdit ? activeJudgeScore : effectivePresentationTotal) + teamRebuttalBonus).toFixed(1)}đ
+                  + {teamRebuttalBonus}đ phản biện (/30đ) = <strong className="text-slate-900">
+                    {((canEdit ? activeJudgeScore : effectivePresentationTotal) + teamRebuttalBonus).toFixed(1)} / 150đ
                   </strong>
                 </div>
               </div>
@@ -868,9 +868,19 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                           <button
                             type="button"
                             onClick={() =>
-                              handleScoreChange(criterion.key, currentVal - 0.5, criterion.max)
+                              handleScoreChange(criterion.key, currentVal - 1, criterion.max)
                             }
                             className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs"
+                            title="Trừ 1đ"
+                          >
+                            -1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleScoreChange(criterion.key, currentVal - 0.5, criterion.max)
+                            }
+                            className="px-1.5 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs"
                             title="Trừ 0.5đ"
                           >
                             -0.5
@@ -880,10 +890,20 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                             onClick={() =>
                               handleScoreChange(criterion.key, currentVal + 0.5, criterion.max)
                             }
-                            className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs"
+                            className="px-1.5 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs"
                             title="Cộng 0.5đ"
                           >
                             +0.5
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleScoreChange(criterion.key, currentVal + 1, criterion.max)
+                            }
+                            className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs"
+                            title="Cộng 1đ"
+                          >
+                            +1
                           </button>
                           <button
                             type="button"
@@ -1065,7 +1085,7 @@ export const ScoringView: React.FC<ScoringViewProps> = ({
                 </h4>
               </div>
               <span className="text-xs font-mono font-bold text-cyan-700">
-                +{teamRebuttalBonus} / 4.5đ
+                +{teamRebuttalBonus} / 30đ (Tối đa)
               </span>
             </div>
 

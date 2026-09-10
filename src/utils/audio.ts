@@ -157,6 +157,11 @@ class SoundManager {
       osc2.stop(now + 0.9);
     } catch {}
   }
+
+  // Soft UI click sound
+  public playClick() {
+    this.playTick(1100);
+  }
 }
 
 export const soundManager = new SoundManager();

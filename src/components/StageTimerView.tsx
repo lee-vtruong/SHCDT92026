@@ -18,7 +18,8 @@ import {
   Trash2,
   Lock,
   ShieldCheck,
-  Bell
+  Bell,
+  Shuffle
 } from 'lucide-react';
 import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo, BuzzerRecord, TeamAccount } from '../types';
 import { 
@@ -45,6 +46,7 @@ interface StageTimerViewProps {
   onResetBuzzer?: () => void;
   onOpenTeamBuzzer?: () => void;
   currentTeamAuth?: TeamAccount | null;
+  onGoToRandomTopic?: (teamId: number) => void;
 }
 
 const PHASE_DURATIONS: Record<RoundPhase, number> = {
@@ -92,6 +94,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   onResetBuzzer,
   onOpenTeamBuzzer,
   currentTeamAuth,
+  onGoToRandomTopic,
 }) => {
   const [phase, setPhase] = useState<RoundPhase>('prepare');
   const [timeLeft, setTimeLeft] = useState<number>(PHASE_DURATIONS.prepare);
@@ -189,9 +192,9 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     if (!selectedDebaterTeamId) return;
 
     let score = 0;
-    if (rebuttalLevel === 'valid') score = 0.5;
-    if (rebuttalLevel === 'sharp') score = 1.0;
-    if (rebuttalLevel === 'excellent') score = 1.5;
+    if (rebuttalLevel === 'valid') score = 3;
+    if (rebuttalLevel === 'sharp') score = 7;
+    if (rebuttalLevel === 'excellent') score = 10;
 
     onAddRebuttal({
       roundTeamId: currentTeam.id,
@@ -653,6 +656,18 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 </ul>
               </div>
             )}
+
+            {/* Quick Random Draw Button */}
+            {onGoToRandomTopic && (
+              <button
+                id="stage-goto-random-topic-btn"
+                onClick={() => onGoToRandomTopic(currentTeam.id)}
+                className="mt-3 w-full py-2 px-3 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-cyan-600" />
+                <span>🎲 Bốc Thăm / Đổi Đề Ngẫu Nhiên ({currentTeam.name})</span>
+              </button>
+            )}
           </div>
 
           {/* Rebuttal Quick Manager Box */}
@@ -687,9 +702,9 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 {currentRoundRebuttals.map((r) => {
                   const rebTeam = teams.find((t) => t.id === r.rebuttalTeamId);
                   const levelBadge = {
-                    valid: { label: 'Mức 1: Hợp lệ', score: '+0.5đ', bg: 'bg-blue-50 text-blue-700 border-blue-200' },
-                    sharp: { label: 'Mức 2: Sắc sảo', score: '+1.0đ', bg: 'bg-amber-50 text-amber-700 border-amber-200' },
-                    excellent: { label: 'Mức 3: Xuất sắc', score: '+1.5đ', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                    valid: { label: 'Mức 1: Hợp lệ', score: '+3đ', bg: 'bg-blue-50 text-blue-700 border-blue-200' },
+                    sharp: { label: 'Mức 2: Sắc sảo', score: '+7đ', bg: 'bg-amber-50 text-amber-700 border-amber-200' },
+                    excellent: { label: 'Mức 3: Xuất sắc', score: '+10đ', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
                     none: { label: '0 điểm', score: '0đ', bg: 'bg-slate-100 text-slate-600 border-slate-200' },
                   }[r.level];
 
@@ -823,22 +838,22 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 {[
                   {
                     level: 'valid' as RebuttalLevel,
-                    title: 'Mức 1 – Hợp lệ (+0.5đ)',
-                    desc: 'Phản biện đúng chủ đề, chỉ ra điểm cần làm rõ cơ bản.',
+                    title: 'Mức 1 – Hợp lệ (+3đ)',
+                    desc: 'Phản biện đúng chủ đề, chỉ ra điểm cần làm rõ cơ bản (gốc 0.5đ quy đổi 3.3đ làm tròn 3đ).',
                     border: 'hover:border-blue-400',
                     active: 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-200',
                   },
                   {
                     level: 'sharp' as RebuttalLevel,
-                    title: 'Mức 2 – Sắc sảo (+1.0đ)',
-                    desc: 'Chạm điểm yếu/giả định quan trọng, có lý do rõ ràng.',
+                    title: 'Mức 2 – Sắc sảo (+7đ)',
+                    desc: 'Chạm điểm yếu/giả định quan trọng, có lý do rõ ràng (gốc 1.0đ quy đổi 6.7đ làm tròn 7đ).',
                     border: 'hover:border-amber-400',
                     active: 'border-amber-500 bg-amber-50/80 text-amber-900 ring-2 ring-amber-200',
                   },
                   {
                     level: 'excellent' as RebuttalLevel,
-                    title: 'Mức 3 – Xuất sắc (+1.5đ)',
-                    desc: 'Ngắn gọn nhưng sâu, phát hiện mâu thuẫn cốt lõi.',
+                    title: 'Mức 3 – Xuất sắc (+10đ)',
+                    desc: 'Ngắn gọn nhưng sâu, phát hiện mâu thuẫn cốt lõi (gốc 1.5đ quy đổi 10đ).',
                     border: 'hover:border-emerald-400',
                     active: 'border-emerald-500 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-200',
                   },

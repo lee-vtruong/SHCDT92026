@@ -5,11 +5,11 @@ export const INITIAL_JUDGE_PROFILES: JudgeProfile[] = [
     id: 1,
     name: 'Đồng chí Lê Hình Nhựt Thanh',
     role: 'Giám khảo 1 • Hội đồng Giám khảo',
-    subTitle: 'Đảng ủy viên Chi bộ Sinh viên 5',
+    subTitle: 'Chi ủy viên Chi bộ Sinh viên 5',
     avatarUrl: '/assets/judges/gk1.jpg',
     fallbackColor: 'from-amber-500 to-yellow-600',
     achievements: [
-      'Đảng ủy viên Chi bộ Sinh viên 5',
+      'Chi ủy viên Chi bộ Sinh viên 5',
       'Cán bộ Đoàn - Hội tiêu biểu, giàu kinh nghiệm tổ chức các phong trào học thuật',
       'Nghiên cứu viên Phòng Thí nghiệm Công nghệ phần mềm (SELab)',
       'Sở hữu nhiều bài báo khoa học quốc tế'
@@ -20,14 +20,14 @@ export const INITIAL_JUDGE_PROFILES: JudgeProfile[] = [
     id: 2,
     name: 'Đồng chí Lê Thị Thu Hiền',
     role: 'Giám khảo 2 • Hội đồng Giám khảo',
-    subTitle: 'Đảng ủy viên Chi bộ Sinh viên 4',
+    subTitle: 'Phó Bí thư Chi bộ Sinh viên 4',
     avatarUrl: '/assets/judges/gk2.jpg',
     fallbackColor: 'from-blue-500 to-cyan-600',
     achievements: [
-      'Đảng ủy viên Chi bộ Sinh viên 4',
-      'Cán bộ Đoàn - Hội năng nổ, nhiệt huyết trong các chiến dịch tình nguyện',
-      'Chiến sĩ tiêu biểu Chiến dịch Tình nguyện Mùa hè xanh HCMUS',
-      'Đánh giá sâu sắc về kỹ năng truyền cảm hứng, tính cộng đồng và giá trị nhân văn của đề tài'
+      'Phó Bí thư Chi bộ Sinh viên 4',
+      'Ủy viên Ban Thường vụ, Chánh Văn phòng Đoàn trường',
+      'Nguyên Chủ tịch Hội Sinh viên trường',
+      'Chỉ huy trưởng Chiến dịch tình nguyện Mùa hè xanh cấp trường 3 năm liền'
     ],
     bioQuote: 'Mỗi ý tưởng được sẻ chia là một hạt mầm cho sự đổi mới và gắn kết cộng đồng.'
   },

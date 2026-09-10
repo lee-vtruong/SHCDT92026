@@ -40,7 +40,7 @@ export const RulesView: React.FC = () => {
           <li>Mỗi đề là một vấn đề xã hội, một ý tưởng hoặc một giải pháp cần phân tích và bảo vệ quan điểm.</li>
           <li>Mỗi đội được phân công hoặc bốc thăm <strong>01 đề</strong> và lần lượt lên trình bày trước Ban Giám khảo (BGK).</li>
           <li>
-            <strong className="text-cyan-700">Kết quả chung cuộc</strong> = <strong>Điểm phần trình bày (tối đa 20đ)</strong> + <strong>Điểm thưởng phản biện (tối đa 4.5đ)</strong>.
+            <strong className="text-cyan-700">Kết quả chung cuộc (Thang 150)</strong> = <strong>Điểm phần trình bày (tối đa 120đ)</strong> + <strong>Điểm thưởng phản biện (tối đa 30đ)</strong>.
           </li>
         </ul>
       </div>
@@ -108,42 +108,49 @@ export const RulesView: React.FC = () => {
               <tr className="bg-slate-50 text-slate-500 font-mono font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                 <th className="py-3 px-4">Tiêu Chí</th>
                 <th className="py-3 px-4">Mô Tả Yêu Cầu</th>
-                <th className="py-3 px-4 text-right w-28">Điểm Tối Đa</th>
+                <th className="py-3 px-3 text-right w-24">Điểm Gốc</th>
+                <th className="py-3 px-4 text-right w-36 text-cyan-800 font-extrabold">Quy Đổi (Thang 150)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               <tr>
-                <td className="py-3 px-4 font-bold text-slate-900">Hiểu đề & bám sát vấn đề</td>
+                <td className="py-3 px-4 font-bold text-slate-900">1. Hiểu đề & bám sát vấn đề</td>
                 <td className="py-3 px-4 text-slate-600 text-xs">Xác định đúng trọng tâm, trả lời đúng yêu cầu của đề.</td>
-                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">4.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500">4.0đ</td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 text-sm">24.0đ</td>
               </tr>
               <tr className="bg-cyan-50/50">
                 <td className="py-3 px-4 font-bold text-cyan-800">
-                  Lập luận & tư duy phản biện
+                  2. Lập luận & tư duy phản biện
                   <span className="block text-[10px] text-cyan-600 font-medium font-mono">★ Tiêu chí phụ ưu tiên khi hòa điểm</span>
                 </td>
                 <td className="py-3 px-4 text-slate-600 text-xs">Luận điểm rõ, logic, có lý lẽ thuyết phục; nhìn nhận được nhiều chiều.</td>
-                <td className="py-3 px-4 text-right font-mono font-bold text-cyan-700">5.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500">5.0đ</td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-cyan-700 text-sm">30.0đ</td>
               </tr>
               <tr>
-                <td className="py-3 px-4 font-bold text-slate-900">Tính khả thi / giá trị của giải pháp</td>
+                <td className="py-3 px-4 font-bold text-slate-900">3. Tính khả thi / giá trị của giải pháp</td>
                 <td className="py-3 px-4 text-slate-600 text-xs">Giải pháp hợp lý, có khả năng áp dụng hoặc tạo tác động thực tế.</td>
-                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">4.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500">4.0đ</td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 text-sm">24.0đ</td>
               </tr>
               <tr>
-                <td className="py-3 px-4 font-bold text-slate-900">Tính sáng tạo</td>
+                <td className="py-3 px-4 font-bold text-slate-900">4. Tính sáng tạo</td>
                 <td className="py-3 px-4 text-slate-600 text-xs">Có góc nhìn mới, cách tiếp cận khác biệt hoặc ý tưởng đáng chú ý.</td>
-                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">3.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500">3.0đ</td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 text-sm">18.0đ</td>
               </tr>
               <tr>
-                <td className="py-3 px-4 font-bold text-slate-900">Kỹ năng trình bày & quản lý thời gian</td>
+                <td className="py-3 px-4 font-bold text-slate-900">5. Kỹ năng trình bày & quản lý thời gian</td>
                 <td className="py-3 px-4 text-slate-600 text-xs">Diễn đạt rõ ràng, mạch lạc, thuyết phục và hoàn thành trong thời gian quy định.</td>
-                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">4.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500">4.0đ</td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 text-sm">24.0đ</td>
               </tr>
               <tr className="bg-slate-50 font-bold">
-                <td className="py-3 px-4 text-cyan-800 font-mono uppercase tracking-wider">TỔNG ĐIỂM TRÌNH BÀY TỐI ĐA</td>
+                <td className="py-3 px-4 text-cyan-800 font-mono uppercase tracking-wider">I. TỔNG ĐIỂM TRÌNH BÀY TỐI ĐA</td>
                 <td className="py-3 px-4 text-slate-500 text-xs font-normal">Cộng tổng cả 5 tiêu chí</td>
-                <td className="py-3 px-4 text-right font-mono text-base text-cyan-700 font-black">20.0đ</td>
+                <td className="py-3 px-3 text-right font-mono text-slate-500 font-bold">20.0đ</td>
+                <td className="py-3 px-4 text-right font-mono text-base text-cyan-700 font-black">120.0đ</td>
               </tr>
             </tbody>
           </table>
@@ -155,13 +162,16 @@ export const RulesView: React.FC = () => {
         <div className="flex items-center gap-2 text-cyan-600">
           <Flame className="w-5 h-5" />
           <h3 className="text-base sm:text-lg font-black text-slate-900">
-            4. Điểm Thưởng Phản Biện (Tối Đa 4.5 Điểm)
+            II. Điểm Thưởng Phản Biện (Tối Đa 30 Điểm)
           </h3>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200">
-            <span className="text-xs font-mono font-bold text-sky-700">+0.5 ĐIỂM</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-sky-700">+3.0 ĐIỂM</span>
+              <span className="text-[10px] font-mono text-slate-500">Gốc: 0.5đ (3.3 làm tròn 3)</span>
+            </div>
             <h4 className="text-sm font-bold text-slate-900 mt-1">Mức 1 – Hợp Lệ</h4>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
               Phản biện đúng chủ đề, chỉ ra được điểm cần làm rõ nhưng còn tương đối cơ bản.
@@ -169,7 +179,10 @@ export const RulesView: React.FC = () => {
           </div>
 
           <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200">
-            <span className="text-xs font-mono font-bold text-amber-700">+1.0 ĐIỂM</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-amber-700">+7.0 ĐIỂM</span>
+              <span className="text-[10px] font-mono text-slate-500">Gốc: 1.0đ (6.7 làm tròn 7)</span>
+            </div>
             <h4 className="text-sm font-bold text-slate-900 mt-1">Mức 2 – Sắc Sảo</h4>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
               Chạm vào điểm yếu/giả định quan trọng trong lập luận, có lý do rõ ràng và buộc người nghe phải xem xét lại.
@@ -177,7 +190,10 @@ export const RulesView: React.FC = () => {
           </div>
 
           <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200">
-            <span className="text-xs font-mono font-bold text-emerald-700">+1.5 ĐIỂM</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-emerald-700">+10.0 ĐIỂM</span>
+              <span className="text-[10px] font-mono text-slate-500">Gốc: 1.5đ</span>
+            </div>
             <h4 className="text-sm font-bold text-slate-900 mt-1">Mức 3 – Xuất Sắc</h4>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
               Phản biện ngắn gọn nhưng sâu, phát hiện mâu thuẫn/lỗ hổng cốt lõi hoặc đưa ra góc nhìn đối trọng rất thuyết phục.
@@ -190,7 +206,10 @@ export const RulesView: React.FC = () => {
             • <strong>0 Điểm:</strong> Phản biện lạc đề, lặp lại ý đã có, mang tính công kích cá nhân hoặc không hình thành được luận điểm rõ ràng (vẫn tính là 01 lượt giơ tay đã dùng).
           </p>
           <p>
-            • <strong>Điểm thưởng tối đa của một đội:</strong> 4.5 điểm (03 lượt × 1.5 điểm).
+            • <strong>Điểm thưởng tối đa của một đội:</strong> 30 điểm (03 lượt × 10 điểm).
+          </p>
+          <p>
+            • <strong>Tổng điểm chung cuộc:</strong> 120 điểm trình bày + 30 điểm thưởng phản biện = <strong>Tối đa 150 điểm</strong>.
           </p>
         </div>
       </div>

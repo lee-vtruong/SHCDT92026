@@ -9,11 +9,16 @@ import {
   Users, 
   KeyRound, 
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  Smartphone,
+  Lock,
+  Unlock,
+  ShieldAlert
 } from 'lucide-react';
 import { Team, TeamAccount, BuzzerRecord } from '../types';
-import { TEAM_ACCOUNTS, authenticateTeam, canTeamRebut, getTeamRebuttals } from '../utils/scoring';
+import { TEAM_ACCOUNTS, canTeamRebut, getTeamRebuttals } from '../utils/scoring';
 import { soundManager } from '../utils/audio';
+import { teamAuthService, ActiveSessionInfo } from '../utils/teamAuthService';
 
 interface TeamBuzzerModalProps {
   isOpen: boolean;
@@ -42,42 +47,113 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
 }) => {
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorDetails, setErrorDetails] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isLockedError, setIsLockedError] = useState(false);
   const [justBuzzed, setJustBuzzed] = useState(false);
+  const [activeTeamIds, setActiveTeamIds] = useState<number[]>([]);
+  const [unlockSuccessMsg, setUnlockSuccessMsg] = useState('');
+
+  // Fetch active sessions
+  const refreshActiveSessions = async () => {
+    const data = await teamAuthService.getActiveSessions();
+    setActiveTeamIds(data.activeTeamIds);
+  };
 
   useEffect(() => {
     if (isOpen) {
       setPasswordInput('');
       setErrorMsg('');
+      setErrorDetails('');
+      setIsLockedError(false);
+      setUnlockSuccessMsg('');
+      refreshActiveSessions();
+
+      const poll = setInterval(refreshActiveSessions, 4000);
+      return () => clearInterval(poll);
     }
   }, [isOpen]);
 
+  // Heartbeat loop for current team device
+  useEffect(() => {
+    if (!currentTeamAuth) return;
+
+    // Send immediate heartbeat
+    teamAuthService.sendHeartbeat(currentTeamAuth.id);
+
+    const timer = setInterval(async () => {
+      const ok = await teamAuthService.sendHeartbeat(currentTeamAuth.id);
+      if (!ok) {
+        onLogoutTeam();
+        setErrorMsg('Phiên của thiết bị này đã kết thúc do đăng nhập mới hoặc hết hạn.');
+      }
+    }, 8000);
+
+    return () => clearInterval(timer);
+  }, [currentTeamAuth]);
+
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passwordInput.trim()) {
       setErrorMsg('Vui lòng nhập mật khẩu của đội bạn!');
       return;
     }
-    const acc = authenticateTeam(passwordInput);
-    if (acc) {
-      onLoginTeam(acc);
-      setErrorMsg('');
-      soundManager.playDing();
-    } else {
-      setErrorMsg('Mật khẩu không đúng! (Mẹo: doi1 đến doi10)');
+
+    setIsLoggingIn(true);
+    setErrorMsg('');
+    setErrorDetails('');
+    setIsLockedError(false);
+
+    try {
+      const res = await teamAuthService.login(passwordInput);
+
+      if (res.success && res.account) {
+        onLoginTeam(res.account);
+        setErrorMsg('');
+        soundManager.playDing();
+        refreshActiveSessions();
+      } else {
+        setErrorMsg(res.error || 'Mật khẩu không chính xác!');
+        if (res.locked) {
+          setIsLockedError(true);
+          setErrorDetails(res.details || 'Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị.');
+        }
+      }
+    } catch {
+      setErrorMsg('Lỗi kết nối khi đăng nhập. Vui lòng thử lại.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
   const handleQuickSelectTeam = (acc: TeamAccount) => {
-    onLoginTeam(acc);
+    setPasswordInput(acc.code);
     setErrorMsg('');
-    soundManager.playDing();
+    setErrorDetails('');
+    setIsLockedError(false);
   };
 
-  const teamData = currentTeamAuth
-    ? teams.find((t) => t.id === currentTeamAuth.id)
-    : null;
+  const handleLogout = async () => {
+    if (currentTeamAuth) {
+      await teamAuthService.logout(currentTeamAuth.id);
+    }
+    onLogoutTeam();
+    refreshActiveSessions();
+  };
+
+  const handleForceUnlockCurrent = async (teamIdToUnlock: number) => {
+    const res = await teamAuthService.forceUnlock(teamIdToUnlock);
+    if (res.success) {
+      setUnlockSuccessMsg(res.message);
+      setIsLockedError(false);
+      setErrorMsg('');
+      setErrorDetails('');
+      refreshActiveSessions();
+      setTimeout(() => setUnlockSuccessMsg(''), 4000);
+    }
+  };
 
   const isPresentingNow = presentingTeamId !== null && currentTeamAuth?.id === presentingTeamId;
   const myBuzzRecord = currentTeamAuth
@@ -110,9 +186,14 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
               <h2 className="font-extrabold text-lg tracking-tight">
                 {currentTeamAuth ? `Chuông Bấm: ${currentTeamAuth.name}` : 'Chuông Bấm 10 Đội Thi'}
               </h2>
-              <p className="text-xs text-rose-100 font-medium">
-                {currentTeamAuth ? 'Bấm chuông để giành quyền phản biện trực tiếp' : 'Đăng nhập để nhận chuông của đội'}
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-rose-100 font-medium">
+                  {currentTeamAuth ? 'Bấm chuông để giành quyền phản biện trực tiếp' : 'Giới hạn 1 thiết bị / 1 đội thi'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-mono font-bold">
+                  1 Device Only
+                </span>
+              </div>
             </div>
           </div>
           <button
@@ -130,15 +211,22 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
             <div className="space-y-5">
               <div className="text-center space-y-1">
                 <div className="inline-flex p-3 rounded-2xl bg-rose-50 text-rose-600 mb-2">
-                  <KeyRound className="w-6 h-6" />
+                  <Smartphone className="w-6 h-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-slate-800">
-                  Nhập Mật Khẩu Đội Của Bạn
+                  Đăng Nhập Thiết Bị Đội Thi
                 </h3>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                  Mỗi đội có một mật khẩu riêng từ <span className="font-mono font-bold text-slate-700">doi1</span> đến <span className="font-mono font-bold text-slate-700">doi10</span>.
+                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                  Mỗi đội chỉ được phép đăng nhập trên <strong>1 thiết bị duy nhất</strong>. Nếu đội đã có người đăng nhập, thiết bị khác sẽ bị chặn.
                 </p>
               </div>
+
+              {unlockSuccessMsg && (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{unlockSuccessMsg}</span>
+                </div>
+              )}
 
               <form onSubmit={handleLogin} className="space-y-3">
                 <div>
@@ -147,42 +235,99 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                     autoFocus
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="Nhập mật khẩu (ví dụ: doi1)"
+                    placeholder="Nhập mật khẩu (doi1 đến doi10)"
                     className="w-full px-4 py-3 text-center text-lg font-mono font-bold tracking-widest rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-sm placeholder:tracking-normal"
                   />
                 </div>
 
                 {errorMsg && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{errorMsg}</span>
+                  <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-start gap-2.5 ${
+                    isLockedError
+                      ? 'bg-rose-50 border-rose-300 text-rose-800'
+                      : 'bg-amber-50 border-amber-300 text-amber-800'
+                  }`}>
+                    <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="space-y-1 text-left flex-1">
+                      <div className="font-bold">{errorMsg}</div>
+                      {errorDetails && (
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          {errorDetails}
+                        </p>
+                      )}
+                      {isLockedError && (
+                        <div className="pt-2 border-t border-rose-200 mt-2 flex items-center justify-between">
+                          <span className="text-[10px] text-rose-700">Thiết bị cũ mất nguồn hoặc gặp sự cố?</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const match = passwordInput.trim().toLowerCase().match(/^doi(\d+)$/);
+                              if (match) {
+                                handleForceUnlockCurrent(Number(match[1]));
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center gap-1 shadow-xs"
+                          >
+                            <Unlock className="w-3 h-3" />
+                            <span>Mở Khóa Thiết Bị Này</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
+                  disabled={isLoggingIn}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Bell className="w-4 h-4" />
-                  <span>Xác Nhận & Mở Chuông</span>
+                  <span>{isLoggingIn ? 'Đang Kiểm Tra Thiết Bị...' : 'Xác Nhận & Đăng Nhập Thiết Bị'}</span>
                 </button>
               </form>
 
-              {/* Quick helper / Account list for convenience */}
-              <div className="pt-2 border-t border-slate-100">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2 text-center">
-                  Hoặc chọn nhanh đội (Thử nghiệm nhanh)
-                </span>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {TEAM_ACCOUNTS.map((acc) => (
-                    <button
-                      key={acc.id}
-                      onClick={() => handleQuickSelectTeam(acc)}
-                      className="p-2 rounded-lg bg-slate-50 hover:bg-rose-50 hover:border-rose-200 border border-slate-200/80 text-slate-700 hover:text-rose-700 text-xs font-bold transition-all text-center"
-                    >
-                      {acc.name}
-                    </button>
-                  ))}
+              {/* Status of 10 Team Devices */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Trạng Thái Đăng Nhập 10 Đội:
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {activeTeamIds.length}/10 đang online
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                  {TEAM_ACCOUNTS.map((acc) => {
+                    const isOnline = activeTeamIds.includes(acc.id);
+
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => handleQuickSelectTeam(acc)}
+                        className={`p-2 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
+                          isOnline
+                            ? 'bg-rose-50/70 border-rose-200 text-rose-900 hover:bg-rose-100'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span>{acc.name}</span>
+                          {isOnline ? (
+                            <Lock className="w-3 h-3 text-rose-600" />
+                          ) : (
+                            <Unlock className="w-3 h-3 text-emerald-500" />
+                          )}
+                        </div>
+                        <span className={`text-[9px] mt-1 font-mono font-medium ${
+                          isOnline ? 'text-rose-600' : 'text-slate-400'
+                        }`}>
+                          {isOnline ? 'Đang dùng' : 'Trống'}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -192,23 +337,27 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
               {/* Team Info Card */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex items-center justify-between">
                 <div className="text-left">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-600">
-                    Đang Đăng Nhập
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700">
+                      Thiết Bị Đang Kết Nối Duy Nhất
+                    </span>
+                  </div>
                   <h3 className="text-lg font-extrabold text-slate-900">
                     {currentTeamAuth.name}
                   </h3>
                   <span className="text-xs text-slate-500">
-                    Mật khẩu: <strong className="font-mono text-slate-700">{currentTeamAuth.code}</strong>
+                    Tài khoản: <strong className="font-mono text-slate-700">{currentTeamAuth.code}</strong>
                   </span>
                 </div>
 
                 <button
-                  onClick={onLogoutTeam}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  title="Đăng xuất thiết bị này để nhường cho thiết bị khác"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Đổi Đội</span>
+                  <span>Đăng Xuất</span>
                 </button>
               </div>
 

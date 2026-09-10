@@ -54,37 +54,37 @@ export const RUBRIC_CRITERIA_META = [
     key: 'topicUnderstanding' as keyof RubricScores,
     title: 'Hiểu đề & bám sát vấn đề',
     desc: 'Xác định đúng trọng tâm, trả lời đúng yêu cầu của đề.',
-    max: 4,
-    step: 0.25,
+    max: 24,
+    step: 0.5,
   },
   {
     key: 'argumentation' as keyof RubricScores,
     title: 'Lập luận & tư duy phản biện',
     desc: 'Luận điểm rõ, logic, có lý lẽ thuyết phục; nhìn nhận nhiều chiều. (Tiêu chí phụ ưu tiên khi hòa điểm)',
-    max: 5,
-    step: 0.25,
+    max: 30,
+    step: 0.5,
     isTieBreaker: true,
   },
   {
     key: 'feasibility' as keyof RubricScores,
     title: 'Tính khả thi / giá trị giải pháp',
     desc: 'Giải pháp hợp lý, có khả năng áp dụng hoặc tạo tác động thực tế.',
-    max: 4,
-    step: 0.25,
+    max: 24,
+    step: 0.5,
   },
   {
     key: 'creativity' as keyof RubricScores,
     title: 'Tính sáng tạo',
     desc: 'Có góc nhìn mới, cách tiếp cận khác biệt hoặc ý tưởng đáng chú ý.',
-    max: 3,
-    step: 0.25,
+    max: 18,
+    step: 0.5,
   },
   {
     key: 'presentationSkills' as keyof RubricScores,
     title: 'Kỹ năng trình bày & quản lý thời gian',
     desc: 'Diễn đạt rõ ràng, mạch lạc, thuyết phục và hoàn thành trong thời gian quy định.',
-    max: 4,
-    step: 0.25,
+    max: 24,
+    step: 0.5,
   },
 ];
 
@@ -159,7 +159,7 @@ export function getTeamRebuttals(teamId: number, rebuttals: RebuttalRecord[]): R
 export function calculateRebuttalBonus(teamId: number, rebuttals: RebuttalRecord[]): number {
   const teamRebuttals = getTeamRebuttals(teamId, rebuttals);
   const total = teamRebuttals.reduce((sum, r) => sum + (r.score || 0), 0);
-  return Number(total.toFixed(2));
+  return Number(Math.min(30, total).toFixed(2));
 }
 
 export function calculateOverallTotal(team: Team, rebuttals: RebuttalRecord[]): number {

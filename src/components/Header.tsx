@@ -13,12 +13,13 @@ import {
   KeyRound,
   Lock,
   GraduationCap,
-  Bell
+  Bell,
+  Shuffle
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 import { JudgeInfo, TeamAccount } from '../types';
 
-export type ActiveTab = 'stage' | 'scoring' | 'leaderboard' | 'judges' | 'topics' | 'rules';
+export type ActiveTab = 'stage' | 'scoring' | 'leaderboard' | 'random-topic' | 'judges' | 'topics' | 'rules';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -131,6 +132,21 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Trophy className="w-4 h-4 shrink-0" />
               <span>Bảng Điểm</span>
+            </button>
+
+            {/* 🎲 Tab Bốc Thăm Đề Ngẫu Nhiên */}
+            <button
+              id="tab-random-topic-btn"
+              onClick={() => setActiveTab('random-topic')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                activeTab === 'random-topic'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-xs ring-2 ring-cyan-300'
+                  : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 hover:border-cyan-200'
+              }`}
+              title="Giao diện bốc thăm ngẫu nhiên đề thi cho từng đội"
+            >
+              <Shuffle className="w-4 h-4 shrink-0 text-cyan-600" />
+              <span>🎲 Bốc Thăm Đề</span>
             </button>
 
             {/* ⭐ Tab Giới Thiệu BGK - Always Highlighted & Easy to Find */}

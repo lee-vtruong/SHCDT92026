@@ -1,11 +1,11 @@
 export type RoundPhase = 'prepare' | 'present' | 'rebuttal' | 'idle';
 
 export interface RubricScores {
-  topicUnderstanding: number;    // Hiểu đề & bám sát vấn đề (max 4)
-  argumentation: number;         // Lập luận & tư duy phản biện (max 5) - TIÊU CHÍ PHỤ ƯU TIÊN
-  feasibility: number;           // Tính khả thi/giá trị giải pháp (max 4)
-  creativity: number;            // Tính sáng tạo (max 3)
-  presentationSkills: number;    // Kỹ năng trình bày & quản lý thời gian (max 4)
+  topicUnderstanding: number;    // Hiểu đề & bám sát vấn đề (max 24)
+  argumentation: number;         // Lập luận & tư duy phản biện (max 30) - TIÊU CHÍ PHỤ ƯU TIÊN
+  feasibility: number;           // Tính khả thi/giá trị giải pháp (max 24)
+  creativity: number;            // Tính sáng tạo (max 18)
+  presentationSkills: number;    // Kỹ năng trình bày & quản lý thời gian (max 24)
 }
 
 export interface JudgeInfo {

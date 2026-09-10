@@ -6,6 +6,7 @@ import { LeaderboardView } from './components/LeaderboardView';
 import { TopicsView } from './components/TopicsView';
 import { RulesView } from './components/RulesView';
 import { JudgesIntroView } from './components/JudgesIntroView';
+import { RandomTopicView } from './components/RandomTopicView';
 import { JudgeAuthModal } from './components/JudgeAuthModal';
 import { AdminResetModal } from './components/AdminResetModal';
 import { TeamBuzzerModal } from './components/TeamBuzzerModal';
@@ -48,14 +49,57 @@ export default function App() {
     }
   });
 
-  // 1. Teams State with LocalStorage
+  // 1. Teams State with LocalStorage (with auto-migration to 150 scale)
   const [teams, setTeams] = useState<Team[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.TEAMS);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 10) {
-          return parsed;
+          // Check if migration to 150 scale is needed
+          return parsed.map((team: Team) => {
+            const s = team.presentationScores;
+            const needsMigration = s && (s.topicUnderstanding <= 4 && s.argumentation <= 5 && (s.topicUnderstanding + s.argumentation + s.feasibility + s.creativity + s.presentationSkills) > 0);
+            if (needsMigration) {
+              const updatedScores = {
+                topicUnderstanding: Number((s.topicUnderstanding * 6).toFixed(1)),
+                argumentation: Number((s.argumentation * 6).toFixed(1)),
+                feasibility: Number((s.feasibility * 6).toFixed(1)),
+                creativity: Number((s.creativity * 6).toFixed(1)),
+                presentationSkills: Number((s.presentationSkills * 6).toFixed(1)),
+              };
+
+              let updatedJudgeScores = team.judgeScores;
+              if (updatedJudgeScores) {
+                const newJudgeMap: Record<string, any> = {};
+                Object.entries(updatedJudgeScores).forEach(([jId, record]: [string, any]) => {
+                  const js = record.scores;
+                  if (js && js.argumentation <= 5 && (js.topicUnderstanding + js.argumentation + js.feasibility + js.creativity + js.presentationSkills) > 0) {
+                    newJudgeMap[jId] = {
+                      ...record,
+                      scores: {
+                        topicUnderstanding: Number((js.topicUnderstanding * 6).toFixed(1)),
+                        argumentation: Number((js.argumentation * 6).toFixed(1)),
+                        feasibility: Number((js.feasibility * 6).toFixed(1)),
+                        creativity: Number((js.creativity * 6).toFixed(1)),
+                        presentationSkills: Number((js.presentationSkills * 6).toFixed(1)),
+                      }
+                    };
+                  } else {
+                    newJudgeMap[jId] = record;
+                  }
+                });
+                updatedJudgeScores = newJudgeMap;
+              }
+
+              return {
+                ...team,
+                presentationScores: updatedScores,
+                judgeScores: updatedJudgeScores,
+              };
+            }
+            return team;
+          });
         }
       }
     } catch {}
@@ -76,12 +120,21 @@ export default function App() {
     return DEFAULT_TOPICS;
   });
 
-  // 3. Rebuttal records
+  // 3. Rebuttal records (with auto-migration to 150 scale: 3, 7, 10)
   const [rebuttals, setRebuttals] = useState<RebuttalRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.REBUTTALS);
       if (saved) {
-        return JSON.parse(saved);
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          return list.map((r: RebuttalRecord) => {
+            if (r.score > 0 && r.score <= 1.5) {
+              const newScore = r.level === 'valid' ? 3 : r.level === 'sharp' ? 7 : r.level === 'excellent' ? 10 : 0;
+              return { ...r, score: newScore };
+            }
+            return r;
+          });
+        }
       }
     } catch {}
     return [];
@@ -553,6 +606,10 @@ export default function App() {
             onResetBuzzer={handleResetBuzzer}
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
+            onGoToRandomTopic={(teamId) => {
+              setCurrentTeamId(teamId);
+              setActiveTab('random-topic');
+            }}
           />
         )}
 
@@ -587,6 +644,20 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'random-topic' && (
+          <RandomTopicView
+            teams={teams}
+            topics={topics}
+            currentTeamId={currentTeamId}
+            onSelectTeam={(teamId) => setCurrentTeamId(teamId)}
+            onAssignTopic={handleAssignTopic}
+            onGoToStage={(teamId) => {
+              setCurrentTeamId(teamId);
+              setActiveTab('stage');
+            }}
+          />
+        )}
+
         {activeTab === 'judges' && (
           <JudgesIntroView onGoToStage={() => setActiveTab('stage')} />
         )}
@@ -613,7 +684,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span>Thang điểm 20 + 4.5 thưởng</span>
+            <span>Thang điểm 120đ + 30đ thưởng (Tổng 150đ)</span>
             <span className="text-slate-300">•</span>
             <div className="inline-flex items-center gap-1.5 text-slate-500">
               <span>Web by</span>
