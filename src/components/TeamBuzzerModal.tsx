@@ -97,7 +97,40 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     return () => clearInterval(timer);
   }, [currentTeamAuth]);
 
-  if (!isOpen) return null;
+  // Local synced stage timer state across tabs or via prop
+  const [syncedTimerState, setSyncedTimerState] = useState<StageTimerState>(() => {
+    if (stageTimerState) return stageTimerState;
+    try {
+      const saved = localStorage.getItem('chuyende_stage_timer_state_v2');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      phase: 'prepare',
+      timeLeft: 60,
+      totalDuration: 60,
+      isRunning: false,
+      currentTeamId: presentingTeamId || 1,
+      updatedAt: Date.now(),
+    };
+  });
+
+  useEffect(() => {
+    if (stageTimerState) {
+      setSyncedTimerState(stageTimerState);
+    }
+  }, [stageTimerState]);
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'chuyende_stage_timer_state_v2' && e.newValue) {
+        try {
+          setSyncedTimerState(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,47 +193,16 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     }
   };
 
-  // Local synced stage timer state across tabs or via prop
-  const [syncedTimerState, setSyncedTimerState] = useState<StageTimerState>(() => {
-    if (stageTimerState) return stageTimerState;
-    try {
-      const saved = localStorage.getItem('chuyende_stage_timer_state_v2');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      phase: 'prepare',
-      timeLeft: 60,
-      totalDuration: 60,
-      isRunning: false,
-      currentTeamId: presentingTeamId || 1,
-      updatedAt: Date.now(),
-    };
-  });
-
-  useEffect(() => {
-    if (stageTimerState) {
-      setSyncedTimerState(stageTimerState);
-    }
-  }, [stageTimerState]);
-
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'chuyende_stage_timer_state_v2' && e.newValue) {
-        try {
-          setSyncedTimerState(JSON.parse(e.newValue));
-        } catch {}
-      }
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
+  const safeRebuttals = Array.isArray(rebuttals) ? rebuttals : [];
+  const safeBuzzerQueue = Array.isArray(buzzerQueue) ? buzzerQueue : [];
+  const safeTeams = Array.isArray(teams) ? teams : [];
 
   const effectivePresentingTeamId = presentingTeamId ?? syncedTimerState.currentTeamId;
   const isPresentingNow = effectivePresentingTeamId !== null && currentTeamAuth?.id === effectivePresentingTeamId;
-  const presentingTeam = teams.find((t) => t.id === effectivePresentingTeamId);
+  const presentingTeam = safeTeams.find((t) => t.id === effectivePresentingTeamId);
 
   // Rebuttal quota & turn limit calculations
-  const myTeamRebuttals = currentTeamAuth ? getTeamRebuttals(currentTeamAuth.id, rebuttals) : [];
+  const myTeamRebuttals = currentTeamAuth ? getTeamRebuttals(currentTeamAuth.id, safeRebuttals) : [];
   const myRebuttalsUsed = myTeamRebuttals.length;
   const hasUsedAllRebuttals = myRebuttalsUsed >= 3;
   const remainingRebuttals = Math.max(0, 3 - myRebuttalsUsed);
@@ -209,7 +211,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   const hasRebuttedInThisRound = Boolean(
     currentTeamAuth &&
     effectivePresentingTeamId !== null &&
-    rebuttals.some(
+    safeRebuttals.some(
       (r) => r.rebuttalTeamId === currentTeamAuth.id && r.roundTeamId === effectivePresentingTeamId
     )
   );
@@ -219,10 +221,10 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   const isRebuttalCountdownRunning = isRebuttalPhase && syncedTimerState.isRunning && syncedTimerState.timeLeft > 0;
 
   const myBuzzRecord = currentTeamAuth
-    ? buzzerQueue.find((b) => b.teamId === currentTeamAuth.id)
+    ? safeBuzzerQueue.find((b) => b.teamId === currentTeamAuth.id)
     : null;
   const myBuzzRank = currentTeamAuth
-    ? buzzerQueue.findIndex((b) => b.teamId === currentTeamAuth.id) + 1
+    ? safeBuzzerQueue.findIndex((b) => b.teamId === currentTeamAuth.id) + 1
     : 0;
 
   const canBuzzNow =
@@ -274,6 +276,8 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     setJustBuzzed(true);
     setTimeout(() => setJustBuzzed(false), 1200);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">

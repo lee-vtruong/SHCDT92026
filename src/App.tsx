@@ -174,7 +174,31 @@ export default function App() {
   });
 
   // 5. Team Auth & Buzzer states
-  const [isTeamBuzzerModalOpen, setIsTeamBuzzerModalOpen] = useState<boolean>(false);
+  const [isTeamBuzzerModalOpen, setIsTeamBuzzerModalOpen] = useState<boolean>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (
+        searchParams.get('buzzer') === 'true' ||
+        searchParams.get('tab') === 'buzzer' ||
+        window.location.hash === '#buzzer' ||
+        window.location.pathname.includes('/buzzer')
+      ) {
+        return true;
+      }
+    } catch {}
+    return false;
+  });
+
+  // Listen for hash / URL changes to toggle buzzer
+  useEffect(() => {
+    const checkHash = () => {
+      if (window.location.hash === '#buzzer') {
+        setIsTeamBuzzerModalOpen(true);
+      }
+    };
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
   const [currentTeamAuth, setCurrentTeamAuth] = useState<TeamAccount | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.TEAM_AUTH);
