@@ -86,3 +86,12 @@ export interface TeamAccount {
   code: string;
 }
 
+export interface StageTimerState {
+  phase: RoundPhase;
+  timeLeft: number;
+  totalDuration: number;
+  isRunning: boolean;
+  currentTeamId: number;
+  updatedAt: number;
+}
+

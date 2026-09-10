@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header, ActiveTab } from './components/Header';
 import { StageTimerView } from './components/StageTimerView';
 import { ScoringView } from './components/ScoringView';
@@ -10,10 +10,11 @@ import { RandomTopicView } from './components/RandomTopicView';
 import { JudgeAuthModal } from './components/JudgeAuthModal';
 import { AdminResetModal } from './components/AdminResetModal';
 import { TeamBuzzerModal } from './components/TeamBuzzerModal';
-import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord } from './types';
+import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord, StageTimerState } from './types';
 import { DEFAULT_TOPICS, INITIAL_TEAMS, generateRandomTeamTopicAssignment } from './data/defaultTopics';
 import { soundManager } from './utils/audio';
-import { authenticateJudge } from './utils/scoring';
+import { authenticateJudge, canTeamRebut } from './utils/scoring';
+import { teamAuthService } from './utils/teamAuthService';
 
 const STORAGE_KEYS = {
   TEAMS: 'chuyende_teams_v2',
@@ -24,6 +25,7 @@ const STORAGE_KEYS = {
   IS_ADMIN: 'chuyende_is_admin_v2',
   TEAM_AUTH: 'chuyende_team_auth_v1',
   BUZZER_QUEUE: 'chuyende_buzzer_queue_v1',
+  STAGE_TIMER_STATE: 'chuyende_stage_timer_state_v2',
 };
 
 export default function App() {
@@ -189,11 +191,34 @@ export default function App() {
     return [];
   });
 
+  // Stage timer & phase state synchronized across tabs
+  const [stageTimerState, setStageTimerState] = useState<StageTimerState>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.STAGE_TIMER_STATE);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      phase: 'prepare',
+      timeLeft: 60,
+      totalDuration: 60,
+      isRunning: false,
+      currentTeamId: 1,
+      updatedAt: Date.now(),
+    };
+  });
+
+  const handleTimerStateChange = useCallback((newState: StageTimerState) => {
+    setStageTimerState(newState);
+    try {
+      localStorage.setItem(STORAGE_KEYS.STAGE_TIMER_STATE, JSON.stringify(newState));
+    } catch {}
+  }, []);
+
   // Active teams being viewed
   const [currentTeamId, setCurrentTeamId] = useState<number>(1);
   const [selectedScoringTeamId, setSelectedScoringTeamId] = useState<number>(1);
 
-  // Sync buzzer and team across tabs via StorageEvent
+  // Sync buzzer, timer state, and team across tabs via StorageEvent
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.BUZZER_QUEUE) {
@@ -206,6 +231,12 @@ export default function App() {
             }
           } else {
             setBuzzerQueue([]);
+          }
+        } catch {}
+      } else if (e.key === STORAGE_KEYS.STAGE_TIMER_STATE) {
+        try {
+          if (e.newValue) {
+            setStageTimerState(JSON.parse(e.newValue));
           }
         } catch {}
       } else if (e.key === STORAGE_KEYS.TEAM_AUTH) {
@@ -253,6 +284,41 @@ export default function App() {
     }
   }, [isAdmin]);
 
+  // Periodic heartbeat & single-device ownership verification for logged in team
+  useEffect(() => {
+    if (!currentTeamAuth) return;
+
+    let isMounted = true;
+
+    // Check immediately upon load
+    teamAuthService.sendHeartbeat(currentTeamAuth.id).then((isValid) => {
+      if (!isMounted) return;
+      if (!isValid) {
+        setCurrentTeamAuth(null);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
+        } catch {}
+      }
+    });
+
+    // Check periodically every 10 seconds
+    const interval = setInterval(async () => {
+      const isValid = await teamAuthService.sendHeartbeat(currentTeamAuth.id);
+      if (!isMounted) return;
+      if (!isValid) {
+        setCurrentTeamAuth(null);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
+        } catch {}
+      }
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [currentTeamAuth]);
+
   // Handlers for Judge Authentication
   const handleSelectJudge = (judge: JudgeInfo) => {
     setCurrentJudge(judge);
@@ -279,6 +345,9 @@ export default function App() {
   };
 
   const handleLogoutTeam = () => {
+    if (currentTeamAuth) {
+      teamAuthService.logout(currentTeamAuth.id);
+    }
     setCurrentTeamAuth(null);
     try {
       localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
@@ -286,6 +355,20 @@ export default function App() {
   };
 
   const handleBuzz = (teamId: number, teamName: string) => {
+    // Check 1: Stage timer must be actively counting down during Rebuttal phase
+    if (!(stageTimerState.phase === 'rebuttal' && stageTimerState.isRunning && stageTimerState.timeLeft > 0)) {
+      soundManager.playError();
+      return;
+    }
+
+    // Check 2: Team must be eligible according to tournament rules (max 3 rebuttals, max 1 per round, not presenting team)
+    const effectivePresentingTeamId = stageTimerState.currentTeamId ?? currentTeamId;
+    const rebuttalCheck = canTeamRebut(teamId, effectivePresentingTeamId, rebuttals);
+    if (!rebuttalCheck.canRebut) {
+      soundManager.playError();
+      return;
+    }
+
     setBuzzerQueue((prev) => {
       if (prev.some((b) => b.teamId === teamId)) return prev;
       const now = Date.now();
@@ -650,6 +733,7 @@ export default function App() {
             onResetBuzzer={handleResetBuzzer}
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
+            onTimerStateChange={handleTimerStateChange}
             onGoToRandomTopic={(teamId) => {
               setCurrentTeamId(teamId);
               setActiveTab('random-topic');
@@ -771,6 +855,7 @@ export default function App() {
         isOpen={isTeamBuzzerModalOpen}
         onClose={() => setIsTeamBuzzerModalOpen(false)}
         teams={teams}
+        rebuttals={rebuttals}
         currentTeamAuth={currentTeamAuth}
         onLoginTeam={handleLoginTeam}
         onLogoutTeam={handleLogoutTeam}
@@ -778,6 +863,7 @@ export default function App() {
         onBuzz={handleBuzz}
         onResetBuzzer={handleResetBuzzer}
         presentingTeamId={currentTeamId}
+        stageTimerState={stageTimerState}
       />
     </div>
   );

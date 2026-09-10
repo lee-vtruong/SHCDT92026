@@ -21,7 +21,7 @@ import {
   Bell,
   Shuffle
 } from 'lucide-react';
-import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo, BuzzerRecord, TeamAccount } from '../types';
+import { Team, Topic, RoundPhase, RebuttalRecord, RebuttalLevel, JudgeInfo, BuzzerRecord, TeamAccount, StageTimerState } from '../types';
 import { 
   calculatePresentationTotal, 
   calculateRebuttalBonus, 
@@ -47,6 +47,7 @@ interface StageTimerViewProps {
   onOpenTeamBuzzer?: () => void;
   currentTeamAuth?: TeamAccount | null;
   onGoToRandomTopic?: (teamId: number) => void;
+  onTimerStateChange?: (state: StageTimerState) => void;
 }
 
 const PHASE_DURATIONS: Record<RoundPhase, number> = {
@@ -95,11 +96,26 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   onOpenTeamBuzzer,
   currentTeamAuth,
   onGoToRandomTopic,
+  onTimerStateChange,
 }) => {
   const [phase, setPhase] = useState<RoundPhase>('prepare');
   const [timeLeft, setTimeLeft] = useState<number>(PHASE_DURATIONS.prepare);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [totalPhaseDuration, setTotalPhaseDuration] = useState<number>(PHASE_DURATIONS.prepare);
+
+  // Sync state upward so App and other tabs know whether rebuttal 1m countdown is active
+  useEffect(() => {
+    if (onTimerStateChange) {
+      onTimerStateChange({
+        phase,
+        timeLeft,
+        totalDuration: totalPhaseDuration,
+        isRunning,
+        currentTeamId,
+        updatedAt: Date.now(),
+      });
+    }
+  }, [phase, timeLeft, totalPhaseDuration, isRunning, currentTeamId, onTimerStateChange]);
 
   // Modal / Form state for awarding rebuttal
   const [selectedDebaterTeamId, setSelectedDebaterTeamId] = useState<number | null>(null);
@@ -119,8 +135,11 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     setTimeLeft(duration);
     setTotalPhaseDuration(duration);
     setIsRunning(false);
+    if (newPhase === 'rebuttal' && onResetBuzzer) {
+      onResetBuzzer();
+    }
     soundManager.playDing();
-  }, []);
+  }, [onResetBuzzer]);
 
   // Timer tick effect
   useEffect(() => {
@@ -169,6 +188,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     if (currentTeamId < teams.length) {
       setCurrentTeamId(currentTeamId + 1);
       handleSwitchPhase('prepare');
+      onResetBuzzer?.();
     }
   };
 
@@ -176,6 +196,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     if (currentTeamId > 1) {
       setCurrentTeamId(currentTeamId - 1);
       handleSwitchPhase('prepare');
+      onResetBuzzer?.();
     }
   };
 
@@ -416,6 +437,34 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto line-clamp-2">
                 {PHASE_TITLES[phase].subtitle}
               </p>
+
+              {/* Live Buzzer Gate Status Indicator */}
+              <div className="mt-2.5 flex items-center justify-center">
+                {phase === 'rebuttal' ? (
+                  isRunning && timeLeft > 0 ? (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs animate-pulse">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                      <Bell className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>CHUÔNG 10 ĐỘI ĐANG MỞ (Còn {timeLeft}s) — Các đội khác bấm ngay để phản biện!</span>
+                    </div>
+                  ) : timeLeft <= 0 ? (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-xs">
+                      <Lock className="w-3.5 h-3.5 text-rose-600" />
+                      <span>HẾT GIỜ 1 PHÚT PHẢN BIỆN — Chuông bấm đã tự động khóa</span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold shadow-xs">
+                      <Lock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>CHUÔNG ĐANG KHÓA — Bấm "BẮT ĐẦU" đếm ngược 1 phút để mở chuông</span>
+                    </div>
+                  )
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-medium">
+                    <Lock className="w-3 h-3 text-slate-400" />
+                    <span>Chuông phản biện đang khóa (Chỉ mở trong 1 phút đếm ngược Phản Biện)</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Circular Timer Visual */}
@@ -706,6 +755,17 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 </h3>
               </div>
               <div className="flex items-center gap-2">
+                {phase === 'rebuttal' && isRunning && timeLeft > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-extrabold animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    <span>Mở ({timeLeft}s)</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-[10px] font-semibold">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>Khóa</span>
+                  </span>
+                )}
                 {onOpenTeamBuzzer && (
                   <button
                     onClick={onOpenTeamBuzzer}
