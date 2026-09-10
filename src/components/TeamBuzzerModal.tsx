@@ -157,6 +157,18 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     };
   }, []);
 
+  // Fetch immediately whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      syncService.fetchTimerState().then((timer) => {
+        if (timer) setSyncedTimerState(timer);
+      });
+      syncService.fetchBuzzerQueue().then((queue) => {
+        if (queue) setLocalBuzzerQueue(queue);
+      });
+    }
+  }, [isOpen]);
+
   // Smooth local countdown ticker for active timer
   useEffect(() => {
     let ticker: ReturnType<typeof setInterval> | null = null;

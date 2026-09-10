@@ -48,6 +48,7 @@ interface StageTimerViewProps {
   currentTeamAuth?: TeamAccount | null;
   onGoToRandomTopic?: (teamId: number) => void;
   onTimerStateChange?: (state: StageTimerState) => void;
+  stageTimerState?: StageTimerState;
 }
 
 const PHASE_DURATIONS: Record<RoundPhase, number> = {
@@ -97,25 +98,43 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   currentTeamAuth,
   onGoToRandomTopic,
   onTimerStateChange,
+  stageTimerState,
 }) => {
-  const [phase, setPhase] = useState<RoundPhase>('prepare');
-  const [timeLeft, setTimeLeft] = useState<number>(PHASE_DURATIONS.prepare);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [totalPhaseDuration, setTotalPhaseDuration] = useState<number>(PHASE_DURATIONS.prepare);
+  const [phase, setPhase] = useState<RoundPhase>(() => stageTimerState?.phase ?? 'prepare');
+  const [timeLeft, setTimeLeft] = useState<number>(() => stageTimerState?.timeLeft ?? PHASE_DURATIONS.prepare);
+  const [isRunning, setIsRunning] = useState<boolean>(() => stageTimerState?.isRunning ?? false);
+  const [totalPhaseDuration, setTotalPhaseDuration] = useState<number>(() => stageTimerState?.totalDuration ?? PHASE_DURATIONS.prepare);
 
-  // Sync state upward so App and other tabs know whether rebuttal 1m countdown is active
+  // Sync state from stageTimerState when updated remotely or by App
   useEffect(() => {
-    if (onTimerStateChange) {
-      onTimerStateChange({
-        phase,
-        timeLeft,
-        totalDuration: totalPhaseDuration,
-        isRunning,
-        currentTeamId,
-        updatedAt: Date.now(),
-      });
+    if (stageTimerState) {
+      setPhase(stageTimerState.phase);
+      setTimeLeft(stageTimerState.timeLeft);
+      setTotalPhaseDuration(stageTimerState.totalDuration);
+      setIsRunning(stageTimerState.isRunning);
+      if (stageTimerState.currentTeamId && stageTimerState.currentTeamId !== currentTeamId) {
+        setCurrentTeamId(stageTimerState.currentTeamId);
+      }
     }
-  }, [phase, timeLeft, totalPhaseDuration, isRunning, currentTeamId, onTimerStateChange]);
+  }, [stageTimerState]);
+
+  // Helper to push user-initiated timer state changes to App, server and other tabs
+  const emitTimerChange = useCallback(
+    (partial: Partial<StageTimerState>) => {
+      if (onTimerStateChange) {
+        const nextState: StageTimerState = {
+          phase: partial.phase ?? phase,
+          timeLeft: partial.timeLeft ?? timeLeft,
+          totalDuration: partial.totalDuration ?? totalPhaseDuration,
+          isRunning: partial.isRunning ?? isRunning,
+          currentTeamId: partial.currentTeamId ?? currentTeamId,
+          updatedAt: Date.now(),
+        };
+        onTimerStateChange(nextState);
+      }
+    },
+    [phase, timeLeft, totalPhaseDuration, isRunning, currentTeamId, onTimerStateChange]
+  );
 
   // Modal / Form state for awarding rebuttal
   const [selectedDebaterTeamId, setSelectedDebaterTeamId] = useState<number | null>(null);
@@ -129,17 +148,41 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   const currentRoundRebuttals = rebuttals.filter((r) => r.roundTeamId === currentTeam.id);
 
   // Change phase
-  const handleSwitchPhase = useCallback((newPhase: RoundPhase) => {
-    setPhase(newPhase);
-    const duration = PHASE_DURATIONS[newPhase];
-    setTimeLeft(duration);
-    setTotalPhaseDuration(duration);
-    setIsRunning(false);
-    if (newPhase === 'rebuttal' && onResetBuzzer) {
-      onResetBuzzer();
+  const handleSwitchPhase = useCallback(
+    (newPhase: RoundPhase) => {
+      setPhase(newPhase);
+      const duration = PHASE_DURATIONS[newPhase];
+      setTimeLeft(duration);
+      setTotalPhaseDuration(duration);
+      setIsRunning(false);
+      if (newPhase === 'rebuttal' && onResetBuzzer) {
+        onResetBuzzer();
+      }
+      soundManager.playDing();
+      emitTimerChange({
+        phase: newPhase,
+        timeLeft: duration,
+        totalDuration: duration,
+        isRunning: false,
+      });
+    },
+    [onResetBuzzer, emitTimerChange]
+  );
+
+  // Play / Pause toggle
+  const handleTogglePlay = useCallback(() => {
+    const nextRunning = !isRunning;
+    setIsRunning(nextRunning);
+    if (nextRunning) {
+      soundManager.playDing();
     }
-    soundManager.playDing();
-  }, [onResetBuzzer]);
+    const nextTime = timeLeft === 0 ? totalPhaseDuration : timeLeft;
+    setTimeLeft(nextTime);
+    emitTimerChange({
+      isRunning: nextRunning,
+      timeLeft: nextTime,
+    });
+  }, [isRunning, timeLeft, totalPhaseDuration, emitTimerChange]);
 
   // Timer tick effect
   useEffect(() => {
@@ -151,6 +194,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
           if (prev <= 1) {
             setIsRunning(false);
             soundManager.playTimeUp();
+            emitTimerChange({ isRunning: false, timeLeft: 0 });
             return 0;
           }
           // Warning ticks for last 10 seconds
@@ -165,7 +209,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isRunning, timeLeft]);
+  }, [isRunning, timeLeft, emitTimerChange]);
 
   // Keyboard shortcut: Spacebar toggles timer
   useEffect(() => {
@@ -176,37 +220,64 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
       }
       if (e.code === 'Space') {
         e.preventDefault();
-        setIsRunning((prev) => !prev);
+        handleTogglePlay();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleTogglePlay]);
 
   // Navigation handlers
   const handleNextTeam = () => {
     if (currentTeamId < teams.length) {
-      setCurrentTeamId(currentTeamId + 1);
-      handleSwitchPhase('prepare');
+      const nextId = currentTeamId + 1;
+      setCurrentTeamId(nextId);
+      const duration = PHASE_DURATIONS.prepare;
+      setPhase('prepare');
+      setTimeLeft(duration);
+      setTotalPhaseDuration(duration);
+      setIsRunning(false);
       onResetBuzzer?.();
+      emitTimerChange({
+        currentTeamId: nextId,
+        phase: 'prepare',
+        timeLeft: duration,
+        totalDuration: duration,
+        isRunning: false,
+      });
     }
   };
 
   const handlePrevTeam = () => {
     if (currentTeamId > 1) {
-      setCurrentTeamId(currentTeamId - 1);
-      handleSwitchPhase('prepare');
+      const prevId = currentTeamId - 1;
+      setCurrentTeamId(prevId);
+      const duration = PHASE_DURATIONS.prepare;
+      setPhase('prepare');
+      setTimeLeft(duration);
+      setTotalPhaseDuration(duration);
+      setIsRunning(false);
       onResetBuzzer?.();
+      emitTimerChange({
+        currentTeamId: prevId,
+        phase: 'prepare',
+        timeLeft: duration,
+        totalDuration: duration,
+        isRunning: false,
+      });
     }
   };
 
   const handleTimeAdjust = (seconds: number) => {
-    setTimeLeft((prev) => Math.max(0, prev + seconds));
+    const nextTime = Math.max(0, timeLeft + seconds);
+    setTimeLeft(nextTime);
+    emitTimerChange({ timeLeft: nextTime });
   };
 
   const handleResetTimer = () => {
     setTimeLeft(totalPhaseDuration);
     setIsRunning(false);
+    emitTimerChange({ timeLeft: totalPhaseDuration, isRunning: false });
   };
 
   const handleConfirmRebuttal = () => {
@@ -562,7 +633,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               {/* Main Play / Pause Button */}
               <button
                 id="timer-play-pause-btn"
-                onClick={() => setIsRunning(!isRunning)}
+                onClick={handleTogglePlay}
                 className={`px-8 py-3.5 rounded-2xl font-black text-sm sm:text-base transition-all transform active:scale-95 flex items-center gap-2 shadow-md ${
                   isRunning
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white shadow-amber-500/25'

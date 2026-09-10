@@ -16,6 +16,7 @@ import { soundManager } from './utils/audio';
 import { authenticateJudge, canTeamRebut } from './utils/scoring';
 import { teamAuthService } from './utils/teamAuthService';
 import { syncService } from './utils/syncService';
+import { Flame, Bell } from 'lucide-react';
 
 const STORAGE_KEYS = {
   TEAMS: 'chuyende_teams_v2',
@@ -278,6 +279,9 @@ export default function App() {
     // 2. Real-time syncService (BroadcastChannel + server HTTP)
     const unsubTimer = syncService.subscribeTimer((newTimer) => {
       setStageTimerState(newTimer);
+      if (newTimer.currentTeamId) {
+        setCurrentTeamId(newTimer.currentTeamId);
+      }
     });
 
     const unsubBuzzer = syncService.subscribeBuzzer((newQueue) => {
@@ -293,6 +297,9 @@ export default function App() {
     syncService.fetchTimerState().then((serverTimer) => {
       if (serverTimer) {
         setStageTimerState(serverTimer);
+        if (serverTimer.currentTeamId) {
+          setCurrentTeamId(serverTimer.currentTeamId);
+        }
       }
     });
 
@@ -302,6 +309,32 @@ export default function App() {
       unsubBuzzer();
     };
   }, []);
+
+  // Global countdown ticker: keeps timeLeft in sync across ALL tabs & pages
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (stageTimerState.isRunning && stageTimerState.timeLeft > 0) {
+      interval = setInterval(() => {
+        setStageTimerState((prev) => {
+          if (!prev.isRunning || prev.timeLeft <= 0) return prev;
+          const nextTime = Math.max(0, prev.timeLeft - 1);
+          if (nextTime === 0) {
+            soundManager.playTimeUp();
+          } else if (prev.phase === 'rebuttal' && nextTime <= 10) {
+            soundManager.playTick(nextTime <= 5 ? 950 : 800);
+          }
+          return {
+            ...prev,
+            timeLeft: nextTime,
+            isRunning: nextTime > 0,
+          };
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [stageTimerState.isRunning, stageTimerState.updatedAt]);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -408,13 +441,13 @@ export default function App() {
   };
 
   const handleBuzz = async (teamId: number, teamName: string) => {
-    // Check 1: Stage timer must be actively counting down during Rebuttal phase
-    if (!(stageTimerState.phase === 'rebuttal' && stageTimerState.isRunning && stageTimerState.timeLeft > 0)) {
+    // Stage timer must be in Rebuttal phase
+    if (stageTimerState.phase !== 'rebuttal') {
       soundManager.playError();
       return;
     }
 
-    // Check 2: Team must be eligible according to tournament rules (max 3 rebuttals, max 1 per round, not presenting team)
+    // Team must be eligible according to tournament rules (max 3 rebuttals, max 1 per round, not presenting team)
     const effectivePresentingTeamId = stageTimerState.currentTeamId ?? currentTeamId;
     const rebuttalCheck = canTeamRebut(teamId, effectivePresentingTeamId, rebuttals);
     if (!rebuttalCheck.canRebut) {
@@ -755,6 +788,67 @@ export default function App() {
         buzzerQueueCount={buzzerQueue.length}
       />
 
+      {/* Global Rebuttal Countdown Alert Banner */}
+      {stageTimerState.phase === 'rebuttal' && stageTimerState.isRunning && stageTimerState.timeLeft > 0 && (
+        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white px-4 py-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 border-b-2 border-amber-300 animate-pulse">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0">
+              <Flame className="w-5 h-5 text-amber-200 animate-bounce" />
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-amber-200 flex items-center gap-1.5">
+                <span>🔥 GIAI ĐOẠN 3: PHẢN BIỆN ĐANG ĐẾM NGƯỢC</span>
+                <span className="bg-white/25 px-2 py-0.5 rounded-full font-mono text-white text-xs font-black">
+                  {Math.floor(stageTimerState.timeLeft / 60).toString().padStart(2, '0')}:{(stageTimerState.timeLeft % 60).toString().padStart(2, '0')}
+                </span>
+              </div>
+              <p className="text-xs text-white/95 font-medium">
+                09 Đội còn lại bấm chuông để giành quyền phản biện Đội {stageTimerState.currentTeamId || currentTeamId}!
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsTeamBuzzerModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-white text-rose-700 hover:bg-amber-50 font-black text-xs sm:text-sm shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+            >
+              <Bell className="w-4 h-4 text-rose-600 fill-current animate-bounce" />
+              <span>MỞ CHUÔNG & BẤM NGAY</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Global Active Buzzer Queue Alert */}
+      {buzzerQueue.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-2 text-xs font-bold text-amber-900 shadow-sm">
+          <div className="flex items-center gap-2 truncate">
+            <Bell className="w-4 h-4 text-amber-600 shrink-0 fill-current" />
+            <span>
+              🔔 ĐÃ BẤM CHUÔNG: <span className="font-black text-rose-700">{buzzerQueue[0].teamName}</span> (Hạng 1)
+              {buzzerQueue.length > 1 && ` và ${buzzerQueue.length - 1} đội khác`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsTeamBuzzerModalOpen(true)}
+              className="text-xs font-bold text-rose-700 hover:underline"
+            >
+              Xem danh sách chuông ({buzzerQueue.length})
+            </button>
+            {(isAdmin || currentJudge) && (
+              <button
+                onClick={handleResetBuzzer}
+                className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[11px] font-bold"
+              >
+                Đặt lại
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 pb-12">
         {activeTab === 'stage' && (
@@ -774,6 +868,7 @@ export default function App() {
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
             onTimerStateChange={handleTimerStateChange}
+            stageTimerState={stageTimerState}
             onGoToRandomTopic={(teamId) => {
               setCurrentTeamId(teamId);
               setActiveTab('random-topic');

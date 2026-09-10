@@ -54,7 +54,7 @@ class SyncService {
     }
 
     // Start background sync polling to support separate devices, incognito, and mobile
-    this.startPolling(800);
+    this.startPolling(600);
   }
 
   public subscribeTimer(listener: TimerListener): () => void {
@@ -101,16 +101,12 @@ class SyncService {
       localStorage.setItem(SYNC_KEYS.STAGE_TIMER, json);
     } catch {}
 
-    // Broadcast across local tabs
+    // Broadcast across local tabs immediately (0ms)
     if (this.channel) {
       try {
         this.channel.postMessage({ type: 'TIMER_UPDATE', timer: state });
       } catch {}
     }
-
-    // Don't spam server if identical within short window
-    if (json === this.lastPushedTimerJson) return;
-    this.lastPushedTimerJson = json;
 
     try {
       await fetch('/api/timer', {
@@ -150,6 +146,22 @@ class SyncService {
         this.channel.postMessage({ type: 'BUZZER_UPDATE', queue });
       } catch {}
     }
+  }
+
+  /**
+   * Fetch current buzzer queue from server
+   */
+  public async fetchBuzzerQueue(): Promise<BuzzerRecord[] | null> {
+    try {
+      const res = await fetch('/api/buzzer');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.queue)) {
+          return data.queue as BuzzerRecord[];
+        }
+      }
+    } catch {}
+    return null;
   }
 
   /**
@@ -218,10 +230,13 @@ class SyncService {
     this.notifyBuzzerListeners([]);
   }
 
+  private lastTimerSignature = '';
+  private lastBuzzerJson = '';
+
   /**
    * Start polling server timer & buzzer state to sync remote devices & incognito
    */
-  public startPolling(intervalMs = 800) {
+  public startPolling(intervalMs = 600) {
     if (this.pollingInterval) clearInterval(this.pollingInterval);
 
     this.pollingInterval = setInterval(async () => {
@@ -232,8 +247,10 @@ class SyncService {
           const data = await res.json();
           if (data && data.success && data.timer) {
             const serverTimer = data.timer as StageTimerState;
-            if (serverTimer.updatedAt > this.lastServerTimerUpdatedAt) {
-              this.lastServerTimerUpdatedAt = serverTimer.updatedAt;
+            // Detect any change in running state, phase, team, or significant time tick
+            const sig = `${serverTimer.phase}_${serverTimer.isRunning}_${serverTimer.currentTeamId}_${serverTimer.totalDuration}_${serverTimer.updatedAt}_${serverTimer.timeLeft}`;
+            if (sig !== this.lastTimerSignature) {
+              this.lastTimerSignature = sig;
               this.notifyTimerListeners(serverTimer);
               try {
                 localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(serverTimer));
@@ -250,10 +267,14 @@ class SyncService {
           const data = await res.json();
           if (data && data.success && Array.isArray(data.queue)) {
             const queue = data.queue as BuzzerRecord[];
-            this.notifyBuzzerListeners(queue);
-            try {
-              localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, JSON.stringify(queue));
-            } catch {}
+            const json = JSON.stringify(queue);
+            if (json !== this.lastBuzzerJson) {
+              this.lastBuzzerJson = json;
+              this.notifyBuzzerListeners(queue);
+              try {
+                localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, json);
+              } catch {}
+            }
           }
         }
       } catch {}
