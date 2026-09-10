@@ -3,6 +3,22 @@ import { TeamAccount } from '../types';
 const DEVICE_ID_KEY = 'hpu_debate_device_id';
 const SESSION_TOKEN_KEY = 'hpu_debate_session_token';
 const LOCAL_ACTIVE_TEAMS_KEY = 'hpu_debate_local_active_teams';
+const SESSION_CHANNEL_KEY = 'hpu_debate_sessions_channel';
+
+// Cross-tab broadcast channel for local session synchronization
+let sessionChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    sessionChannel = new BroadcastChannel(SESSION_CHANNEL_KEY);
+    sessionChannel.onmessage = (e) => {
+      if (e.data?.type === 'SYNC_SESSIONS' && e.data?.map) {
+        try {
+          localStorage.setItem(LOCAL_ACTIVE_TEAMS_KEY, JSON.stringify(e.data.map));
+        } catch {}
+      }
+    };
+  } catch {}
+}
 
 // Generates or retrieves a unique persistent identifier for this device/browser
 export function getOrCreateDeviceId(): string {
@@ -104,33 +120,41 @@ export const teamAuthService = {
         body: JSON.stringify({ password, deviceId, sessionToken, userAgent }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {}
 
-      if (res.ok && data.success) {
-        if (data.sessionToken) {
-          try {
-            sessionStorage.setItem(SESSION_TOKEN_KEY, data.sessionToken);
-          } catch {}
+      if (data && typeof data === 'object') {
+        if (res.ok && data.success) {
+          if (data.sessionToken) {
+            try {
+              sessionStorage.setItem(SESSION_TOKEN_KEY, data.sessionToken);
+            } catch {}
+          }
+          // Track locally
+          this.markLocalSession(data.teamAccount.id, deviceId, sessionToken);
+          return {
+            success: true,
+            account: data.teamAccount,
+          };
         }
-        // Track locally
-        this.markLocalSession(data.teamAccount.id, deviceId, sessionToken);
+
+        // Server actively reported failure (e.g. 409 Conflict: another device logged in)
         return {
-          success: true,
-          account: data.teamAccount,
+          success: false,
+          locked: Boolean(data.locked),
+          error: data.error || 'Đăng nhập không thành công.',
+          details: data.details,
+          sessionInfo: data.sessionInfo,
         };
       }
-
-      return {
-        success: false,
-        locked: Boolean(data.locked),
-        error: data.error || 'Đăng nhập không thành công.',
-        details: data.details,
-        sessionInfo: data.sessionInfo,
-      };
     } catch {
-      // Local fallback for offline mode
-      return this.localLoginFallback(password, deviceId, sessionToken);
+      // Network failure, only then fallback to local
     }
+
+    // Local fallback for offline mode
+    return this.localLoginFallback(password, deviceId, sessionToken);
   },
 
   async logout(teamId: number): Promise<void> {
@@ -206,6 +230,11 @@ export const teamAuthService = {
       const map = raw ? JSON.parse(raw) : {};
       map[teamId] = { deviceId, sessionToken, time: Date.now() };
       localStorage.setItem(LOCAL_ACTIVE_TEAMS_KEY, JSON.stringify(map));
+      if (sessionChannel) {
+        try {
+          sessionChannel.postMessage({ type: 'SYNC_SESSIONS', map });
+        } catch {}
+      }
     } catch {}
   },
 
@@ -216,6 +245,11 @@ export const teamAuthService = {
         const map = JSON.parse(raw);
         delete map[teamId];
         localStorage.setItem(LOCAL_ACTIVE_TEAMS_KEY, JSON.stringify(map));
+        if (sessionChannel) {
+          try {
+            sessionChannel.postMessage({ type: 'SYNC_SESSIONS', map });
+          } catch {}
+        }
       }
     } catch {}
   },

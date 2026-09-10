@@ -20,6 +20,7 @@ import { Team, TeamAccount, BuzzerRecord, StageTimerState, RebuttalRecord } from
 import { TEAM_ACCOUNTS, canTeamRebut, getTeamRebuttals } from '../utils/scoring';
 import { soundManager } from '../utils/audio';
 import { teamAuthService, ActiveSessionInfo } from '../utils/teamAuthService';
+import { syncService } from '../utils/syncService';
 
 interface TeamBuzzerModalProps {
   isOpen: boolean;
@@ -97,7 +98,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     return () => clearInterval(timer);
   }, [currentTeamAuth]);
 
-  // Local synced stage timer state across tabs or via prop
+  // Local synced stage timer state across tabs, server, or via prop
   const [syncedTimerState, setSyncedTimerState] = useState<StageTimerState>(() => {
     if (stageTimerState) return stageTimerState;
     try {
@@ -114,6 +115,15 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     };
   });
 
+  const [localBuzzerQueue, setLocalBuzzerQueue] = useState<BuzzerRecord[]>(() => {
+    if (Array.isArray(buzzerQueue) && buzzerQueue.length > 0) return buzzerQueue;
+    try {
+      const saved = localStorage.getItem('chuyende_buzzer_queue_v2');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
   useEffect(() => {
     if (stageTimerState) {
       setSyncedTimerState(stageTimerState);
@@ -121,16 +131,52 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   }, [stageTimerState]);
 
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'chuyende_stage_timer_state_v2' && e.newValue) {
-        try {
-          setSyncedTimerState(JSON.parse(e.newValue));
-        } catch {}
-      }
+    if (Array.isArray(buzzerQueue)) {
+      setLocalBuzzerQueue(buzzerQueue);
+    }
+  }, [buzzerQueue]);
+
+  // Connect to syncService for real-time remote/incognito/mobile synchronization
+  useEffect(() => {
+    // Initial fetch from server to get accurate timer immediately on modal open
+    syncService.fetchTimerState().then((timer) => {
+      if (timer) setSyncedTimerState(timer);
+    });
+
+    const unsubTimer = syncService.subscribeTimer((newTimer) => {
+      setSyncedTimerState(newTimer);
+    });
+
+    const unsubBuzzer = syncService.subscribeBuzzer((newQueue) => {
+      setLocalBuzzerQueue(newQueue);
+    });
+
+    return () => {
+      unsubTimer();
+      unsubBuzzer();
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
   }, []);
+
+  // Smooth local countdown ticker for active timer
+  useEffect(() => {
+    let ticker: ReturnType<typeof setInterval> | null = null;
+    if (syncedTimerState.isRunning && syncedTimerState.timeLeft > 0) {
+      ticker = setInterval(() => {
+        setSyncedTimerState((prev) => {
+          if (!prev.isRunning || prev.timeLeft <= 0) return prev;
+          const nextTime = Math.max(0, prev.timeLeft - 1);
+          return {
+            ...prev,
+            timeLeft: nextTime,
+            isRunning: nextTime > 0,
+          };
+        });
+      }, 1000);
+    }
+    return () => {
+      if (ticker) clearInterval(ticker);
+    };
+  }, [syncedTimerState.isRunning, syncedTimerState.updatedAt]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,7 +240,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   };
 
   const safeRebuttals = Array.isArray(rebuttals) ? rebuttals : [];
-  const safeBuzzerQueue = Array.isArray(buzzerQueue) ? buzzerQueue : [];
+  const safeBuzzerQueue = localBuzzerQueue.length > 0 ? localBuzzerQueue : (Array.isArray(buzzerQueue) ? buzzerQueue : []);
   const safeTeams = Array.isArray(teams) ? teams : [];
 
   const effectivePresentingTeamId = presentingTeamId ?? syncedTimerState.currentTeamId;
@@ -272,8 +318,9 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     if (myBuzzRecord) return;
 
     soundManager.playBuzzer();
-    onBuzz(currentTeamAuth.id, currentTeamAuth.name);
     setJustBuzzed(true);
+    onBuzz(currentTeamAuth.id, currentTeamAuth.name);
+    syncService.buzz(currentTeamAuth.id, currentTeamAuth.name);
     setTimeout(() => setJustBuzzed(false), 1200);
   };
 

@@ -84,16 +84,140 @@ const TEAM_NAMES: Record<number, string> = {
   10: 'Đội 10',
 };
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+// Stage Timer & Buzzer interfaces
+interface StageTimerState {
+  phase: 'prepare' | 'present' | 'rebuttal';
+  timeLeft: number;
+  totalDuration: number;
+  isRunning: boolean;
+  currentTeamId: number;
+  updatedAt: number;
+}
 
-  app.use(express.json());
+interface BuzzerRecord {
+  teamId: number;
+  teamName: string;
+  timestamp: number;
+  diffMs: number;
+}
 
-  // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+let currentStageTimer: StageTimerState = {
+  phase: 'prepare',
+  timeLeft: 60,
+  totalDuration: 60,
+  isRunning: false,
+  currentTeamId: 1,
+  updatedAt: Date.now(),
+};
+
+let buzzerQueue: BuzzerRecord[] = [];
+
+export const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// CORS headers for multi-device cross-origin & local network access
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// Stage Timer Sync Endpoints (Real-time synchronization across all devices & tabs)
+app.get('/api/timer', (req, res) => {
+  let effectiveTimeLeft = currentStageTimer.timeLeft;
+  if (currentStageTimer.isRunning && currentStageTimer.timeLeft > 0) {
+    const elapsedSec = Math.floor((Date.now() - currentStageTimer.updatedAt) / 1000);
+    effectiveTimeLeft = Math.max(0, currentStageTimer.timeLeft - elapsedSec);
+  }
+  res.json({
+    success: true,
+    timer: {
+      ...currentStageTimer,
+      timeLeft: effectiveTimeLeft,
+      isRunning: currentStageTimer.isRunning && effectiveTimeLeft > 0,
+    },
+    serverTime: Date.now(),
   });
+});
+
+app.post('/api/timer', (req, res) => {
+  const { phase, timeLeft, totalDuration, isRunning, currentTeamId } = req.body;
+  const now = Date.now();
+  currentStageTimer = {
+    phase: phase || currentStageTimer.phase,
+    timeLeft: typeof timeLeft === 'number' ? timeLeft : currentStageTimer.timeLeft,
+    totalDuration: typeof totalDuration === 'number' ? totalDuration : currentStageTimer.totalDuration,
+    isRunning: typeof isRunning === 'boolean' ? isRunning : currentStageTimer.isRunning,
+    currentTeamId: typeof currentTeamId === 'number' ? currentTeamId : currentStageTimer.currentTeamId,
+    updatedAt: now,
+  };
+  res.json({
+    success: true,
+    timer: currentStageTimer,
+    serverTime: now,
+  });
+});
+
+// Buzzer Endpoints (Multi-device queue & ranking)
+app.get('/api/buzzer', (req, res) => {
+  res.json({
+    success: true,
+    queue: buzzerQueue,
+    serverTime: Date.now(),
+  });
+});
+
+app.post('/api/buzzer/buzz', (req, res) => {
+  const { teamId, teamName } = req.body;
+  if (!teamId) {
+    return res.status(400).json({ success: false, error: 'Thiếu thông tin đội' });
+  }
+  const id = Number(teamId);
+  const now = Date.now();
+
+  const existingIndex = buzzerQueue.findIndex((b) => b.teamId === id);
+  if (existingIndex !== -1) {
+    return res.json({
+      success: true,
+      alreadyBuzzed: true,
+      rank: existingIndex + 1,
+      queue: buzzerQueue,
+    });
+  }
+
+  const firstTimestamp = buzzerQueue.length > 0 ? buzzerQueue[0].timestamp : now;
+  const newRecord: BuzzerRecord = {
+    teamId: id,
+    teamName: teamName || TEAM_NAMES[id] || `Đội ${id}`,
+    timestamp: now,
+    diffMs: now - firstTimestamp,
+  };
+
+  buzzerQueue.push(newRecord);
+
+  res.json({
+    success: true,
+    rank: buzzerQueue.length,
+    record: newRecord,
+    queue: buzzerQueue,
+  });
+});
+
+app.post('/api/buzzer/reset', (req, res) => {
+  buzzerQueue = [];
+  res.json({ success: true, queue: [] });
+});
 
   // Get active sessions list (which teams are currently logged in on a device)
   app.get('/api/teams/sessions', (req, res) => {
@@ -270,24 +394,26 @@ async function startServer() {
     });
   });
 
-  // Vite middleware setup
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  // Vite middleware setup and server listen
+  if (!process.env.VERCEL) {
+    if (process.env.NODE_ENV !== 'production') {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      }).then((vite) => {
+        app.use(vite.middlewares);
+        app.listen(PORT, '0.0.0.0', () => {
+          console.log(`Server running on http://localhost:${PORT}`);
+        });
+      });
+    } else {
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();

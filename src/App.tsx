@@ -15,6 +15,7 @@ import { DEFAULT_TOPICS, INITIAL_TEAMS, generateRandomTeamTopicAssignment } from
 import { soundManager } from './utils/audio';
 import { authenticateJudge, canTeamRebut } from './utils/scoring';
 import { teamAuthService } from './utils/teamAuthService';
+import { syncService } from './utils/syncService';
 
 const STORAGE_KEYS = {
   TEAMS: 'chuyende_teams_v2',
@@ -236,14 +237,16 @@ export default function App() {
     try {
       localStorage.setItem(STORAGE_KEYS.STAGE_TIMER_STATE, JSON.stringify(newState));
     } catch {}
+    syncService.pushTimerState(newState);
   }, []);
 
   // Active teams being viewed
   const [currentTeamId, setCurrentTeamId] = useState<number>(1);
   const [selectedScoringTeamId, setSelectedScoringTeamId] = useState<number>(1);
 
-  // Sync buzzer, timer state, and team across tabs via StorageEvent
+  // Sync buzzer, timer state, and team across tabs & devices
   useEffect(() => {
+    // 1. StorageEvent for same-browser storage
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.BUZZER_QUEUE) {
         try {
@@ -271,7 +274,33 @@ export default function App() {
     };
 
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    // 2. Real-time syncService (BroadcastChannel + server HTTP)
+    const unsubTimer = syncService.subscribeTimer((newTimer) => {
+      setStageTimerState(newTimer);
+    });
+
+    const unsubBuzzer = syncService.subscribeBuzzer((newQueue) => {
+      setBuzzerQueue((prev) => {
+        if (newQueue.length > prev.length) {
+          soundManager.playBuzzer();
+        }
+        return newQueue;
+      });
+    });
+
+    // Initial server fetch
+    syncService.fetchTimerState().then((serverTimer) => {
+      if (serverTimer) {
+        setStageTimerState(serverTimer);
+      }
+    });
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      unsubTimer();
+      unsubBuzzer();
+    };
   }, []);
 
   // Sync to LocalStorage
@@ -378,7 +407,7 @@ export default function App() {
     } catch {}
   };
 
-  const handleBuzz = (teamId: number, teamName: string) => {
+  const handleBuzz = async (teamId: number, teamName: string) => {
     // Check 1: Stage timer must be actively counting down during Rebuttal phase
     if (!(stageTimerState.phase === 'rebuttal' && stageTimerState.isRunning && stageTimerState.timeLeft > 0)) {
       soundManager.playError();
@@ -393,29 +422,16 @@ export default function App() {
       return;
     }
 
-    setBuzzerQueue((prev) => {
-      if (prev.some((b) => b.teamId === teamId)) return prev;
-      const now = Date.now();
-      const firstTimestamp = prev.length > 0 ? prev[0].timestamp : now;
-      const newBuzz: BuzzerRecord = {
-        teamId,
-        teamName,
-        timestamp: now,
-        diffMs: now - firstTimestamp,
-      };
-      const next = [...prev, newBuzz];
-      try {
-        localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    soundManager.playBuzzer();
+    await syncService.buzz(teamId, teamName);
   };
 
-  const handleResetBuzzer = () => {
+  const handleResetBuzzer = async () => {
     setBuzzerQueue([]);
     try {
       localStorage.removeItem(STORAGE_KEYS.BUZZER_QUEUE);
     } catch {}
+    await syncService.resetBuzzerQueue();
   };
 
   const handleLoginWithCode = (code: string): boolean => {
