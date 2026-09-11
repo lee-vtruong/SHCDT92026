@@ -15,7 +15,17 @@ interface TeamSession {
 
 // In-memory & file-backed active team device sessions
 const activeSessions = new Map<number, TeamSession>();
-const SESSIONS_FILE = path.join(process.cwd(), 'data_team_sessions.json');
+const SESSIONS_FILE = process.env.VERCEL
+  ? path.join('/tmp', 'data_team_sessions.json')
+  : path.join(process.cwd(), 'data_team_sessions.json');
+
+const TIMER_FILE = process.env.VERCEL
+  ? path.join('/tmp', 'data_stage_timer.json')
+  : path.join(process.cwd(), 'data_stage_timer.json');
+
+const BUZZER_FILE = process.env.VERCEL
+  ? path.join('/tmp', 'data_buzzer_queue.json')
+  : path.join(process.cwd(), 'data_buzzer_queue.json');
 
 // Session expiry: 90 seconds without heartbeat is considered disconnected
 const SESSION_TIMEOUT_MS = 90000;
@@ -128,13 +138,15 @@ app.use((req, res, next) => {
   next();
 });
 
+const apiRouter = express.Router();
+
 // Health check
-app.get('/api/health', (req, res) => {
+apiRouter.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
 // Stage Timer Sync Endpoints (Real-time synchronization across all devices & tabs)
-app.get('/api/timer', (req, res) => {
+apiRouter.get('/timer', (req, res) => {
   let effectiveTimeLeft = currentStageTimer.timeLeft;
   if (currentStageTimer.isRunning && currentStageTimer.timeLeft > 0) {
     const elapsedSec = Math.floor((Date.now() - currentStageTimer.updatedAt) / 1000);
@@ -151,7 +163,7 @@ app.get('/api/timer', (req, res) => {
   });
 });
 
-app.post('/api/timer', (req, res) => {
+apiRouter.post('/timer', (req, res) => {
   const { phase, timeLeft, totalDuration, isRunning, currentTeamId } = req.body;
   const now = Date.now();
   currentStageTimer = {
@@ -170,7 +182,7 @@ app.post('/api/timer', (req, res) => {
 });
 
 // Buzzer Endpoints (Multi-device queue & ranking)
-app.get('/api/buzzer', (req, res) => {
+apiRouter.get('/buzzer', (req, res) => {
   res.json({
     success: true,
     queue: buzzerQueue,
@@ -178,7 +190,7 @@ app.get('/api/buzzer', (req, res) => {
   });
 });
 
-app.post('/api/buzzer/buzz', (req, res) => {
+apiRouter.post('/buzzer/buzz', (req, res) => {
   const { teamId, teamName } = req.body;
   if (!teamId) {
     return res.status(400).json({ success: false, error: 'Thiếu thông tin đội' });
@@ -214,185 +226,189 @@ app.post('/api/buzzer/buzz', (req, res) => {
   });
 });
 
-app.post('/api/buzzer/reset', (req, res) => {
+apiRouter.post('/buzzer/reset', (req, res) => {
   buzzerQueue = [];
   res.json({ success: true, queue: [] });
 });
 
-  // Get active sessions list (which teams are currently logged in on a device)
-  app.get('/api/teams/sessions', (req, res) => {
-    const now = Date.now();
-    const activeList: Array<{ teamId: number; teamName: string; loggedInAt: number; lastHeartbeat: number }> = [];
+// Get active sessions list (which teams are currently logged in on a device)
+apiRouter.get('/teams/sessions', (req, res) => {
+  const now = Date.now();
+  const activeList: Array<{ teamId: number; teamName: string; loggedInAt: number; lastHeartbeat: number }> = [];
 
-    activeSessions.forEach((session, teamId) => {
-      if (now - session.lastHeartbeat <= SESSION_TIMEOUT_MS) {
-        activeList.push({
-          teamId: session.teamId,
-          teamName: session.teamName,
-          loggedInAt: session.loggedInAt,
-          lastHeartbeat: session.lastHeartbeat,
-        });
-      } else {
-        // Expired session cleanup
-        activeSessions.delete(teamId);
-      }
-    });
-
-    res.json({
-      success: true,
-      sessions: activeList,
-      activeTeamIds: activeList.map((s) => s.teamId),
-    });
+  activeSessions.forEach((session, teamId) => {
+    if (now - session.lastHeartbeat <= SESSION_TIMEOUT_MS) {
+      activeList.push({
+        teamId: session.teamId,
+        teamName: session.teamName,
+        loggedInAt: session.loggedInAt,
+        lastHeartbeat: session.lastHeartbeat,
+      });
+    } else {
+      // Expired session cleanup
+      activeSessions.delete(teamId);
+    }
   });
 
-  // Team login with strict 1-device restriction
-  app.post('/api/teams/login', (req, res) => {
-    const { password, deviceId, sessionToken, userAgent } = req.body;
-    if (!password || !deviceId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Vui lòng cung cấp mật khẩu và thông tin thiết bị.',
+  res.json({
+    success: true,
+    sessions: activeList,
+    activeTeamIds: activeList.map((s) => s.teamId),
+  });
+});
+
+// Team login with strict 1-device restriction
+apiRouter.post('/teams/login', (req, res) => {
+  const { password, deviceId, sessionToken, userAgent } = req.body;
+  if (!password || !deviceId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Vui lòng cung cấp mật khẩu và thông tin thiết bị.',
+    });
+  }
+
+  const cleanPwd = String(password).trim().toLowerCase();
+  const teamId = TEAM_PASSWORDS[cleanPwd];
+
+  if (!teamId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Mật khẩu không chính xác! (Mật khẩu đúng: doi1 đến doi10)',
+    });
+  }
+
+  const now = Date.now();
+  const existingSession = activeSessions.get(teamId);
+
+  // Check if team is currently active on a DIFFERENT session or DIFFERENT device
+  if (existingSession && now - existingSession.lastHeartbeat <= SESSION_TIMEOUT_MS) {
+    const isSameSession =
+      (sessionToken && existingSession.sessionToken === sessionToken) ||
+      (!sessionToken && existingSession.deviceId === deviceId);
+
+    if (!isSameSession) {
+      const lastActiveSec = Math.max(1, Math.round((now - existingSession.lastHeartbeat) / 1000));
+      const loginTimeStr = new Date(existingSession.loggedInAt).toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
       });
-    }
 
-    const cleanPwd = String(password).trim().toLowerCase();
-    const teamId = TEAM_PASSWORDS[cleanPwd];
-
-    if (!teamId) {
-      return res.status(401).json({
+      return res.status(409).json({
         success: false,
-        error: 'Mật khẩu không chính xác! (Mật khẩu đúng: doi1 đến doi10)',
-      });
-    }
-
-    const now = Date.now();
-    const existingSession = activeSessions.get(teamId);
-
-    // Check if team is currently active on a DIFFERENT session or DIFFERENT device
-    if (existingSession && now - existingSession.lastHeartbeat <= SESSION_TIMEOUT_MS) {
-      const isSameSession =
-        (sessionToken && existingSession.sessionToken === sessionToken) ||
-        (!sessionToken && existingSession.deviceId === deviceId);
-
-      if (!isSameSession) {
-        const lastActiveSec = Math.max(1, Math.round((now - existingSession.lastHeartbeat) / 1000));
-        const loginTimeStr = new Date(existingSession.loggedInAt).toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
-
-        return res.status(409).json({
-          success: false,
-          locked: true,
+        locked: true,
+        teamId,
+        teamName: TEAM_NAMES[teamId],
+        error: `Tài khoản ${TEAM_NAMES[teamId]} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`,
+        details: `Tài khoản này hiện đang được sử dụng trên một thiết bị/trình duyệt khác (đăng nhập lúc ${loginTimeStr}, hoạt động cách đây ${lastActiveSec}s). Quy định: Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất. Vui lòng đăng xuất ở thiết bị kia trước, hoặc nhờ Ban Tổ Chức mở khóa.`,
+        sessionInfo: {
           teamId,
           teamName: TEAM_NAMES[teamId],
-          error: `Tài khoản ${TEAM_NAMES[teamId]} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`,
-          details: `Tài khoản này hiện đang được sử dụng trên một thiết bị/trình duyệt khác (đăng nhập lúc ${loginTimeStr}, hoạt động cách đây ${lastActiveSec}s). Quy định: Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất. Vui lòng đăng xuất ở thiết bị kia trước, hoặc nhờ Ban Tổ Chức mở khóa.`,
-          sessionInfo: {
-            teamId,
-            teamName: TEAM_NAMES[teamId],
-            loggedInAt: existingSession.loggedInAt,
-            lastHeartbeat: existingSession.lastHeartbeat,
-          },
-        });
-      }
+          loggedInAt: existingSession.loggedInAt,
+          lastHeartbeat: existingSession.lastHeartbeat,
+        },
+      });
     }
+  }
 
-    // Generate or retain sessionToken
-    const finalSessionToken = sessionToken || `tok_${Math.random().toString(36).substring(2, 11)}_${Date.now().toString(36)}`;
+  // Generate or retain sessionToken
+  const finalSessionToken = sessionToken || `tok_${Math.random().toString(36).substring(2, 11)}_${Date.now().toString(36)}`;
 
-    // Grant login / refresh session for this device
-    activeSessions.set(teamId, {
-      sessionToken: finalSessionToken,
-      deviceId,
-      teamId,
-      teamName: TEAM_NAMES[teamId],
-      loggedInAt: existingSession?.sessionToken === finalSessionToken ? existingSession.loggedInAt : now,
-      lastHeartbeat: now,
-      userAgent,
-    });
-    saveSessionsToDisk();
-
-    res.json({
-      success: true,
-      teamAccount: {
-        id: teamId,
-        name: TEAM_NAMES[teamId],
-        code: cleanPwd,
-      },
-      sessionToken: finalSessionToken,
-      message: `Đăng nhập thành công thiết bị cho ${TEAM_NAMES[teamId]}!`,
-    });
+  // Grant login / refresh session for this device
+  activeSessions.set(teamId, {
+    sessionToken: finalSessionToken,
+    deviceId,
+    teamId,
+    teamName: TEAM_NAMES[teamId],
+    loggedInAt: existingSession?.sessionToken === finalSessionToken ? existingSession.loggedInAt : now,
+    lastHeartbeat: now,
+    userAgent,
   });
+  saveSessionsToDisk();
 
-  // Heartbeat / validation to keep session alive and verify single device
-  app.post('/api/teams/heartbeat', (req, res) => {
-    const { teamId, deviceId, sessionToken } = req.body;
-    if (!teamId || !deviceId) {
-      return res.status(400).json({ valid: false, error: 'Thiếu thông tin' });
-    }
+  res.json({
+    success: true,
+    teamAccount: {
+      id: teamId,
+      name: TEAM_NAMES[teamId],
+      code: cleanPwd,
+    },
+    sessionToken: finalSessionToken,
+    message: `Đăng nhập thành công thiết bị cho ${TEAM_NAMES[teamId]}!`,
+  });
+});
 
+// Heartbeat / validation to keep session alive and verify single device
+apiRouter.post('/teams/heartbeat', (req, res) => {
+  const { teamId, deviceId, sessionToken } = req.body;
+  if (!teamId || !deviceId) {
+    return res.status(400).json({ valid: false, error: 'Thiếu thông tin' });
+  }
+
+  const session = activeSessions.get(Number(teamId));
+  if (!session) {
+    return res.json({
+      valid: false,
+      reason: 'Phiên đăng nhập không tồn tại hoặc đã hết hạn.',
+    });
+  }
+
+  const isOwner =
+    (sessionToken && session.sessionToken === sessionToken) ||
+    (!sessionToken && session.deviceId === deviceId);
+
+  if (!isOwner) {
+    return res.json({
+      valid: false,
+      reason: 'Tài khoản của đội đã được đăng nhập từ một thiết bị khác.',
+    });
+  }
+
+  session.lastHeartbeat = Date.now();
+  saveSessionsToDisk();
+  res.json({ valid: true, teamId: Number(teamId) });
+});
+
+// Team logout - immediately frees the session for other devices
+apiRouter.post('/teams/logout', (req, res) => {
+  const { teamId, deviceId, sessionToken } = req.body;
+  if (teamId) {
     const session = activeSessions.get(Number(teamId));
-    if (!session) {
-      return res.json({
-        valid: false,
-        reason: 'Phiên đăng nhập không tồn tại hoặc đã hết hạn.',
-      });
-    }
-
-    const isOwner =
-      (sessionToken && session.sessionToken === sessionToken) ||
-      (!sessionToken && session.deviceId === deviceId);
-
-    if (!isOwner) {
-      return res.json({
-        valid: false,
-        reason: 'Tài khoản của đội đã được đăng nhập từ một thiết bị khác.',
-      });
-    }
-
-    session.lastHeartbeat = Date.now();
-    saveSessionsToDisk();
-    res.json({ valid: true, teamId: Number(teamId) });
-  });
-
-  // Team logout - immediately frees the session for other devices
-  app.post('/api/teams/logout', (req, res) => {
-    const { teamId, deviceId, sessionToken } = req.body;
-    if (teamId) {
-      const session = activeSessions.get(Number(teamId));
-      if (session) {
-        if (!sessionToken || session.sessionToken === sessionToken || session.deviceId === deviceId) {
-          activeSessions.delete(Number(teamId));
-          saveSessionsToDisk();
-        }
+    if (session) {
+      if (!sessionToken || session.sessionToken === sessionToken || session.deviceId === deviceId) {
+        activeSessions.delete(Number(teamId));
+        saveSessionsToDisk();
       }
     }
-    res.json({ success: true });
-  });
+  }
+  res.json({ success: true });
+});
 
-  // Admin force unlock team session
-  app.post('/api/teams/force-unlock', (req, res) => {
-    const { teamId, adminPassword } = req.body;
-    if (adminPassword !== 'admin123') {
-      return res.status(403).json({ success: false, error: 'Sai mật khẩu quản trị viên' });
-    }
+// Admin force unlock team session
+apiRouter.post('/teams/force-unlock', (req, res) => {
+  const { teamId, adminPassword } = req.body;
+  if (adminPassword !== 'admin123') {
+    return res.status(403).json({ success: false, error: 'Sai mật khẩu quản trị viên' });
+  }
 
-    if (teamId === 'all') {
-      activeSessions.clear();
-      saveSessionsToDisk();
-      return res.json({ success: true, message: 'Đã mở khóa toàn bộ thiết bị 10 đội.' });
-    }
-
-    const id = Number(teamId);
-    activeSessions.delete(id);
+  if (teamId === 'all') {
+    activeSessions.clear();
     saveSessionsToDisk();
-    res.json({
-      success: true,
-      message: `Đã mở khóa thiết bị cho ${TEAM_NAMES[id] || 'Đội ' + id}!`,
-    });
+    return res.json({ success: true, message: 'Đã mở khóa toàn bộ thiết bị 10 đội.' });
+  }
+
+  const id = Number(teamId);
+  activeSessions.delete(id);
+  saveSessionsToDisk();
+  res.json({
+    success: true,
+    message: `Đã mở khóa thiết bị cho ${TEAM_NAMES[id] || 'Đội ' + id}!`,
   });
+});
+
+// Mount router under BOTH /api and root (to handle all Vercel rewrite styles seamlessly)
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
   // Vite middleware setup and server listen
   if (!process.env.VERCEL) {
