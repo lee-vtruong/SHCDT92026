@@ -63,7 +63,9 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   // Fetch active sessions
   const refreshActiveSessions = async () => {
     const data = await teamAuthService.getActiveSessions();
-    setActiveTeamIds(data.activeTeamIds);
+    const cloud = syncService.getActiveSessionsList().map((s) => s.teamId);
+    const merged = Array.from(new Set([...data.activeTeamIds, ...cloud]));
+    setActiveTeamIds(merged);
   };
 
   useEffect(() => {
@@ -75,8 +77,23 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
       setUnlockSuccessMsg('');
       refreshActiveSessions();
 
-      const poll = setInterval(refreshActiveSessions, 4000);
-      return () => clearInterval(poll);
+      // Query active devices across Cloud
+      syncService.queryActiveSessions();
+
+      // Realtime listener for cross-device claims / heartbeats (< 50ms)
+      const unsubSessions = syncService.subscribeSessions((cloudSessions) => {
+        const cloudIds = cloudSessions.map((s) => s.teamId);
+        setActiveTeamIds((prev) => {
+          const combined = Array.from(new Set([...prev, ...cloudIds]));
+          return combined;
+        });
+      });
+
+      const poll = setInterval(refreshActiveSessions, 2000);
+      return () => {
+        unsubSessions();
+        clearInterval(poll);
+      };
     }
   }, [isOpen]);
 
@@ -226,9 +243,15 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
 
   const handleQuickSelectTeam = (acc: TeamAccount) => {
     setPasswordInput(acc.code);
-    setErrorMsg('');
-    setErrorDetails('');
-    setIsLockedError(false);
+    if (activeTeamIds.includes(acc.id)) {
+      setErrorMsg(`Tài khoản ${acc.name} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`);
+      setErrorDetails(`Đội này hiện đang hoạt động trên một thiết bị khác. Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất.`);
+      setIsLockedError(true);
+    } else {
+      setErrorMsg('');
+      setErrorDetails('');
+      setIsLockedError(false);
+    }
   };
 
   const handleLogout = async () => {

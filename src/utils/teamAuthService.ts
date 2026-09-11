@@ -1,4 +1,5 @@
 import { TeamAccount } from '../types';
+import { syncService, CloudTeamSession } from './syncService';
 
 const DEVICE_ID_KEY = 'hpu_debate_device_id';
 const SESSION_TOKEN_KEY = 'hpu_debate_session_token';
@@ -67,6 +68,8 @@ export interface ActiveSessionInfo {
   teamName: string;
   loggedInAt: number;
   lastHeartbeat?: number;
+  deviceId?: string;
+  userAgent?: string;
 }
 
 export const teamAuthService = {
@@ -79,33 +82,61 @@ export const teamAuthService = {
   },
 
   async getActiveSessions(): Promise<{ activeTeamIds: number[]; sessions: ActiveSessionInfo[] }> {
+    const cloudSessions = syncService.getActiveSessionsList();
+    const activeMap = new Map<number, ActiveSessionInfo>();
+
+    // 1. Gather sessions from Cloud Realtime SSE
+    cloudSessions.forEach((cs) => {
+      activeMap.set(cs.teamId, {
+        teamId: cs.teamId,
+        teamName: cs.teamName,
+        loggedInAt: cs.loggedInAt,
+        lastHeartbeat: cs.lastHeartbeat,
+        deviceId: cs.deviceId,
+        userAgent: cs.userAgent,
+      });
+    });
+
+    // 2. Gather from local storage fallback
+    try {
+      const raw = localStorage.getItem(LOCAL_ACTIVE_TEAMS_KEY);
+      if (raw) {
+        const map = JSON.parse(raw);
+        const now = Date.now();
+        for (const [idStr, sess] of Object.entries(map as Record<string, { deviceId: string; sessionToken?: string; time: number }>)) {
+          const tId = Number(idStr);
+          if (now - sess.time < 90000 && !activeMap.has(tId)) {
+            activeMap.set(tId, {
+              teamId: tId,
+              teamName: `Đội ${tId}`,
+              loggedInAt: sess.time,
+              lastHeartbeat: sess.time,
+              deviceId: sess.deviceId,
+            });
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Query server API
     try {
       const res = await fetch('/api/teams/sessions');
       if (res.ok) {
         const data = await res.json();
-        return {
-          activeTeamIds: data.activeTeamIds || [],
-          sessions: data.sessions || [],
-        };
-      }
-    } catch {
-      // Offline fallback using localStorage
-      try {
-        const raw = localStorage.getItem(LOCAL_ACTIVE_TEAMS_KEY);
-        if (raw) {
-          const map = JSON.parse(raw);
-          const activeIds: number[] = [];
-          const now = Date.now();
-          for (const [idStr, sess] of Object.entries(map as Record<string, { deviceId: string; sessionToken?: string; time: number }>)) {
-            if (now - sess.time < 90000) {
-              activeIds.push(Number(idStr));
+        if (Array.isArray(data.sessions)) {
+          data.sessions.forEach((s: ActiveSessionInfo) => {
+            if (!activeMap.has(s.teamId)) {
+              activeMap.set(s.teamId, s);
             }
-          }
-          return { activeTeamIds: activeIds, sessions: [] };
+          });
         }
-      } catch {}
-    }
-    return { activeTeamIds: [], sessions: [] };
+      }
+    } catch {}
+
+    const sessions = Array.from(activeMap.values());
+    const activeTeamIds = sessions.map((s) => s.teamId);
+
+    return { activeTeamIds, sessions };
   },
 
   async login(password: string): Promise<LoginResult> {
@@ -113,6 +144,70 @@ export const teamAuthService = {
     const sessionToken = this.getSessionToken();
     const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'browser';
 
+    const clean = password.trim().toLowerCase();
+    const match = clean.match(/^doi(\d+)$/);
+    if (!match) {
+      return { success: false, error: 'Mật khẩu không đúng định dạng (doi1 đến doi10)!' };
+    }
+    const teamId = parseInt(match[1], 10);
+    if (teamId < 1 || teamId > 10) {
+      return { success: false, error: 'Chỉ hỗ trợ Đội 1 đến Đội 10 (doi1 đến doi10)!' };
+    }
+
+    const teamName = `Đội ${teamId}`;
+
+    // --- STEP 1: Strict Check against Realtime Cloud & Local Sessions ---
+    // If another device already claimed this team in the last 90s, BLOCK IMMEDIATELY
+    const cloudSessions = syncService.getActiveSessionsList();
+    const existingCloud = cloudSessions.find((s) => s.teamId === teamId);
+    const now = Date.now();
+
+    if (existingCloud && now - existingCloud.lastHeartbeat <= 90000) {
+      const isSameDevice =
+        (sessionToken && existingCloud.sessionToken === sessionToken) ||
+        existingCloud.deviceId === deviceId;
+
+      if (!isSameDevice) {
+        const timeAgo = Math.max(1, Math.round((now - existingCloud.lastHeartbeat) / 1000));
+        return {
+          success: false,
+          locked: true,
+          error: `Tài khoản ${teamName} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`,
+          details: `Tài khoản ${teamName} hiện đang được sử dụng trên một thiết bị khác (hoạt động cách đây ${timeAgo} giây). Quy định: Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất. Vui lòng đăng xuất ở thiết bị kia trước, hoặc nhờ Ban Tổ Chức mở khóa.`,
+          sessionInfo: {
+            teamId,
+            teamName,
+            loggedInAt: existingCloud.loggedInAt,
+            lastHeartbeat: existingCloud.lastHeartbeat,
+          },
+        };
+      }
+    }
+
+    // Check Local Storage
+    try {
+      const raw = localStorage.getItem(LOCAL_ACTIVE_TEAMS_KEY);
+      if (raw) {
+        const map = JSON.parse(raw);
+        const existingLocal = map[teamId];
+        if (existingLocal && now - existingLocal.time < 90000) {
+          const isSame =
+            (sessionToken && existingLocal.sessionToken === sessionToken) ||
+            (!sessionToken && existingLocal.deviceId === deviceId);
+
+          if (!isSame) {
+            return {
+              success: false,
+              locked: true,
+              error: `Tài khoản ${teamName} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`,
+              details: `Tài khoản ${teamName} hiện đang hoạt động trên một thiết bị khác. Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất.`,
+            };
+          }
+        }
+      }
+    } catch {}
+
+    // --- STEP 2: Attempt Server API Login ---
     try {
       const res = await fetch('/api/teams/login', {
         method: 'POST',
@@ -132,15 +227,26 @@ export const teamAuthService = {
               sessionStorage.setItem(SESSION_TOKEN_KEY, data.sessionToken);
             } catch {}
           }
-          // Track locally
-          this.markLocalSession(data.teamAccount.id, deviceId, sessionToken);
+
+          // Track locally & broadcast to Cloud Realtime SSE
+          this.markLocalSession(teamId, deviceId, sessionToken);
+          syncService.publishSessionClaim({
+            teamId,
+            teamName,
+            deviceId,
+            sessionToken,
+            loggedInAt: now,
+            lastHeartbeat: now,
+            userAgent,
+          });
+
           return {
             success: true,
-            account: data.teamAccount,
+            account: data.teamAccount || { id: teamId, name: teamName, code: `doi${teamId}` },
           };
         }
 
-        // Server actively reported failure (e.g. 409 Conflict: another device logged in)
+        // Server actively reported failure (e.g. 409 Conflict)
         return {
           success: false,
           locked: Boolean(data.locked),
@@ -150,11 +256,29 @@ export const teamAuthService = {
         };
       }
     } catch {
-      // Network failure, only then fallback to local
+      // Network failure or offline -> fallback to Cloud/Local claim
     }
 
-    // Local fallback for offline mode
-    return this.localLoginFallback(password, deviceId, sessionToken);
+    // --- STEP 3: Fallback Offline/Cloud Claim ---
+    this.markLocalSession(teamId, deviceId, sessionToken);
+    syncService.publishSessionClaim({
+      teamId,
+      teamName,
+      deviceId,
+      sessionToken,
+      loggedInAt: now,
+      lastHeartbeat: now,
+      userAgent,
+    });
+
+    return {
+      success: true,
+      account: {
+        id: teamId,
+        name: teamName,
+        code: `doi${teamId}`,
+      },
+    };
   },
 
   async logout(teamId: number): Promise<void> {
@@ -164,6 +288,9 @@ export const teamAuthService = {
     try {
       sessionStorage.removeItem(SESSION_TOKEN_KEY);
     } catch {}
+
+    // Broadcast release over Cloud Realtime SSE
+    syncService.publishSessionRelease(teamId, deviceId);
 
     try {
       await fetch('/api/teams/logout', {
@@ -178,6 +305,10 @@ export const teamAuthService = {
     const deviceId = this.getDeviceId();
     const sessionToken = this.getSessionToken();
 
+    // Broadcast heartbeat over Cloud Realtime SSE
+    syncService.publishSessionHeartbeat(teamId, deviceId, sessionToken, `Đội ${teamId}`);
+    this.markLocalSession(teamId, deviceId, sessionToken);
+
     try {
       const res = await fetch('/api/teams/heartbeat', {
         method: 'POST',
@@ -186,17 +317,26 @@ export const teamAuthService = {
       });
       const data = await res.json();
       if (res.ok && data.valid) {
-        this.markLocalSession(teamId, deviceId, sessionToken);
         return true;
       }
       return false;
     } catch {
-      this.markLocalSession(teamId, deviceId, sessionToken);
       return true;
     }
   },
 
   async forceUnlock(teamId: number | 'all', adminPassword = 'admin123'): Promise<{ success: boolean; message: string }> {
+    // 1. Broadcast unlock over Cloud Realtime SSE
+    syncService.publishSessionForceUnlock(teamId);
+
+    // 2. Clear local storage
+    if (teamId === 'all') {
+      localStorage.removeItem(LOCAL_ACTIVE_TEAMS_KEY);
+    } else {
+      this.clearLocalSession(teamId);
+    }
+
+    // 3. Notify server
     try {
       const res = await fetch('/api/teams/force-unlock', {
         method: 'POST',
@@ -204,22 +344,12 @@ export const teamAuthService = {
         body: JSON.stringify({ teamId, adminPassword }),
       });
       const data = await res.json();
-      if (teamId === 'all') {
-        localStorage.removeItem(LOCAL_ACTIVE_TEAMS_KEY);
-      } else {
-        this.clearLocalSession(teamId);
-      }
       return {
         success: Boolean(data.success),
         message: data.message || (data.success ? 'Đã mở khóa thành công!' : data.error || 'Lỗi mở khóa'),
       };
     } catch {
-      if (teamId === 'all') {
-        localStorage.removeItem(LOCAL_ACTIVE_TEAMS_KEY);
-      } else {
-        this.clearLocalSession(teamId);
-      }
-      return { success: true, message: 'Đã mở khóa thiết bị thành công (Offline mode)!' };
+      return { success: true, message: 'Đã mở khóa thiết bị thành công qua Cloud Realtime!' };
     }
   },
 
@@ -252,51 +382,5 @@ export const teamAuthService = {
         }
       }
     } catch {}
-  },
-
-  localLoginFallback(password: string, deviceId: string, sessionToken: string): LoginResult {
-    const clean = password.trim().toLowerCase();
-    const match = clean.match(/^doi(\d+)$/);
-    if (!match) {
-      return { success: false, error: 'Mật khẩu không đúng (doi1 đến doi10)!' };
-    }
-    const teamId = parseInt(match[1], 10);
-    if (teamId < 1 || teamId > 10) {
-      return { success: false, error: 'Mật khẩu không đúng (doi1 đến doi10)!' };
-    }
-
-    // Check local storage active session
-    try {
-      const raw = localStorage.getItem(LOCAL_ACTIVE_TEAMS_KEY);
-      if (raw) {
-        const map = JSON.parse(raw);
-        const existing = map[teamId];
-        const now = Date.now();
-        if (existing && now - existing.time < 90000) {
-          const isSame =
-            (sessionToken && existing.sessionToken === sessionToken) ||
-            (!sessionToken && existing.deviceId === deviceId);
-
-          if (!isSame) {
-            return {
-              success: false,
-              locked: true,
-              error: `Tài khoản Đội ${teamId} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`,
-              details: `Đội ${teamId} hiện đang hoạt động trên một thiết bị khác. Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất.`,
-            };
-          }
-        }
-      }
-    } catch {}
-
-    this.markLocalSession(teamId, deviceId, sessionToken);
-    return {
-      success: true,
-      account: {
-        id: teamId,
-        name: `Đội ${teamId}`,
-        code: `doi${teamId}`,
-      },
-    };
   },
 };

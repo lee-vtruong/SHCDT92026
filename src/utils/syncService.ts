@@ -3,11 +3,23 @@ import { StageTimerState, BuzzerRecord } from '../types';
 export const SYNC_KEYS = {
   STAGE_TIMER: 'chuyende_stage_timer_state_v2',
   BUZZER_QUEUE: 'chuyende_buzzer_queue_v2',
+  ACTIVE_SESSIONS: 'chuyende_active_team_sessions_v1',
   BROADCAST_CHANNEL: 'chuyende_debate_bus_v1',
 };
 
+export interface CloudTeamSession {
+  teamId: number;
+  teamName: string;
+  deviceId: string;
+  sessionToken?: string;
+  loggedInAt: number;
+  lastHeartbeat: number;
+  userAgent?: string;
+}
+
 type TimerListener = (timer: StageTimerState) => void;
 type BuzzerListener = (queue: BuzzerRecord[]) => void;
+type SessionListener = (sessions: CloudTeamSession[]) => void;
 
 /**
  * Generate unique, safe room topic based on current domain/host
@@ -23,14 +35,18 @@ class SyncService {
   private channel: BroadcastChannel | null = null;
   private timerListeners: Set<TimerListener> = new Set();
   private buzzerListeners: Set<BuzzerListener> = new Set();
+  private sessionListeners: Set<SessionListener> = new Set();
+  private activeSessionsMap = new Map<number, CloudTeamSession>();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private eventSource: EventSource | null = null;
   private lastTimerSignature = '';
   private lastBuzzerJson = '';
+  private lastSessionsJson = '';
   private topic = '';
 
   constructor() {
     this.topic = getSyncRoomTopic();
+    this.loadSessionsFromLocal();
 
     // 1. Channel for instant 0ms sync across tabs on same browser profile
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -44,6 +60,8 @@ class SyncService {
             this.notifyTimerListeners(data.timer);
           } else if (data.type === 'BUZZER_UPDATE' && Array.isArray(data.queue)) {
             this.notifyBuzzerListeners(data.queue);
+          } else if (data.type === 'SESSIONS_UPDATE' && Array.isArray(data.sessions)) {
+            this.handleSessionsArray(data.sessions);
           }
         };
       } catch (err) {
@@ -64,24 +82,87 @@ class SyncService {
             const parsed = JSON.parse(e.newValue);
             this.notifyBuzzerListeners(parsed);
           } catch {}
+        } else if (e.key === SYNC_KEYS.ACTIVE_SESSIONS && e.newValue) {
+          try {
+            const list = JSON.parse(e.newValue);
+            if (Array.isArray(list)) this.handleSessionsArray(list);
+          } catch {}
         }
       });
     }
 
     // 3. Connect to Realtime Cloud SSE Stream (ntfy.sh)
-    // Works 100% across Incognito windows, iPhones, Androids, and remote laptops on Vercel!
     this.initCloudSSE();
 
     // 4. Fetch initial states from Cloud & local server immediately
     this.fetchInitialState();
 
-    // 5. Background fallback polling
+    // 5. Query online sessions from peers
+    this.queryActiveSessions();
+
+    // 6. Background fallback polling
     this.startPolling(800);
+  }
+
+  private loadSessionsFromLocal() {
+    try {
+      const raw = localStorage.getItem(SYNC_KEYS.ACTIVE_SESSIONS);
+      if (raw) {
+        const list = JSON.parse(raw);
+        const now = Date.now();
+        if (Array.isArray(list)) {
+          list.forEach((sess: CloudTeamSession) => {
+            if (sess && sess.teamId && (now - sess.lastHeartbeat <= 90000)) {
+              this.activeSessionsMap.set(sess.teamId, sess);
+            }
+          });
+        }
+      }
+    } catch {}
+  }
+
+  private saveSessionsToLocal() {
+    try {
+      const now = Date.now();
+      const list: CloudTeamSession[] = [];
+      this.activeSessionsMap.forEach((sess) => {
+        if (now - sess.lastHeartbeat <= 90000) {
+          list.push(sess);
+        }
+      });
+      const json = JSON.stringify(list);
+      if (json !== this.lastSessionsJson) {
+        this.lastSessionsJson = json;
+        localStorage.setItem(SYNC_KEYS.ACTIVE_SESSIONS, json);
+        if (this.channel) {
+          try {
+            this.channel.postMessage({ type: 'SESSIONS_UPDATE', sessions: list });
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  private handleSessionsArray(list: CloudTeamSession[]) {
+    const now = Date.now();
+    let changed = false;
+    list.forEach((sess) => {
+      if (sess && sess.teamId && (now - sess.lastHeartbeat <= 90000)) {
+        const existing = this.activeSessionsMap.get(sess.teamId);
+        if (!existing || existing.lastHeartbeat < sess.lastHeartbeat) {
+          this.activeSessionsMap.set(sess.teamId, sess);
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      this.saveSessionsToLocal();
+      this.notifySessionListeners();
+    }
   }
 
   /**
    * Initialize Cloud Realtime Server-Sent Events (SSE)
-   * This bridges Chrome regular windows and Incognito windows directly with < 50ms latency!
    */
   private initCloudSSE() {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
@@ -105,7 +186,7 @@ class SyncService {
       };
 
       this.eventSource.onerror = () => {
-        // EventSource will auto-reconnect natively
+        // Auto reconnect
       };
     } catch (err) {
       console.warn('Could not initialize Cloud SSE:', err);
@@ -115,8 +196,20 @@ class SyncService {
   private handleIncomingPayload(payload: any) {
     if (!payload || typeof payload !== 'object') return;
 
+    // Timer Sync
     if (payload.type === 'TIMER_UPDATE' && payload.timer) {
-      const timer = payload.timer as StageTimerState;
+      let timer = payload.timer as StageTimerState;
+      if (timer.isRunning && timer.timeLeft > 0 && timer.updatedAt) {
+        const elapsedSec = Math.floor((Date.now() - timer.updatedAt) / 1000);
+        if (elapsedSec > 0) {
+          const nextTimeLeft = Math.max(0, timer.timeLeft - elapsedSec);
+          timer = {
+            ...timer,
+            timeLeft: nextTimeLeft,
+            isRunning: nextTimeLeft > 0,
+          };
+        }
+      }
       const sig = `${timer.phase}_${timer.isRunning}_${timer.currentTeamId}_${timer.totalDuration}_${timer.updatedAt}_${timer.timeLeft}`;
       if (sig !== this.lastTimerSignature) {
         this.lastTimerSignature = sig;
@@ -125,7 +218,9 @@ class SyncService {
           localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(timer));
         } catch {}
       }
-    } else if (payload.type === 'BUZZER_UPDATE' && Array.isArray(payload.queue)) {
+    } 
+    // Buzzer Sync
+    else if (payload.type === 'BUZZER_UPDATE' && Array.isArray(payload.queue)) {
       const queue = payload.queue as BuzzerRecord[];
       const json = JSON.stringify(queue);
       if (json !== this.lastBuzzerJson) {
@@ -142,6 +237,73 @@ class SyncService {
         localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, '[]');
       } catch {}
     }
+    // Team Session Claims & Heartbeats (1 device per team enforcement across Cloud)
+    else if (payload.type === 'TEAM_SESSION_CLAIM' && payload.session) {
+      const sess = payload.session as CloudTeamSession;
+      if (sess && sess.teamId) {
+        this.activeSessionsMap.set(sess.teamId, {
+          ...sess,
+          lastHeartbeat: Date.now(),
+        });
+        this.saveSessionsToLocal();
+        this.notifySessionListeners();
+      }
+    } else if (payload.type === 'TEAM_SESSION_HEARTBEAT') {
+      const teamId = Number(payload.teamId);
+      if (teamId) {
+        const existing = this.activeSessionsMap.get(teamId);
+        const now = Date.now();
+        if (existing) {
+          existing.lastHeartbeat = now;
+          if (payload.deviceId) existing.deviceId = payload.deviceId;
+          if (payload.sessionToken) existing.sessionToken = payload.sessionToken;
+        } else if (payload.session) {
+          this.activeSessionsMap.set(teamId, {
+            ...(payload.session as CloudTeamSession),
+            lastHeartbeat: now,
+          });
+        } else {
+          this.activeSessionsMap.set(teamId, {
+            teamId,
+            teamName: payload.teamName || `Đội ${teamId}`,
+            deviceId: payload.deviceId || 'unknown',
+            sessionToken: payload.sessionToken,
+            loggedInAt: now,
+            lastHeartbeat: now,
+          });
+        }
+        this.saveSessionsToLocal();
+        this.notifySessionListeners();
+      }
+    } else if (payload.type === 'TEAM_SESSION_RELEASE' && payload.teamId) {
+      const teamId = Number(payload.teamId);
+      this.activeSessionsMap.delete(teamId);
+      this.saveSessionsToLocal();
+      this.notifySessionListeners();
+    } else if (payload.type === 'TEAM_SESSION_FORCE_UNLOCK') {
+      if (payload.teamId === 'all') {
+        this.activeSessionsMap.clear();
+      } else if (payload.teamId) {
+        this.activeSessionsMap.delete(Number(payload.teamId));
+      }
+      this.saveSessionsToLocal();
+      this.notifySessionListeners();
+    } else if (payload.type === 'TEAM_SESSION_QUERY') {
+      // If this device currently has an active logged-in team, reply with heartbeat immediately
+      if (typeof window !== 'undefined') {
+        try {
+          const authRaw = localStorage.getItem('hpu_debate_team_auth');
+          if (authRaw) {
+            const auth = JSON.parse(authRaw);
+            if (auth && auth.id) {
+              const deviceId = localStorage.getItem('hpu_debate_device_id') || 'dev_client';
+              const sessionToken = sessionStorage.getItem('hpu_debate_session_token') || undefined;
+              this.publishSessionHeartbeat(auth.id, deviceId, sessionToken, auth.name);
+            }
+          }
+        } catch {}
+      }
+    }
   }
 
   /**
@@ -157,11 +319,109 @@ class SyncService {
     } catch {}
   }
 
+  public queryActiveSessions() {
+    this.publishToCloud({ type: 'TEAM_SESSION_QUERY' });
+  }
+
+  public publishSessionClaim(session: CloudTeamSession) {
+    this.activeSessionsMap.set(session.teamId, session);
+    this.saveSessionsToLocal();
+    this.notifySessionListeners();
+    this.publishToCloud({
+      type: 'TEAM_SESSION_CLAIM',
+      session,
+    });
+  }
+
+  public publishSessionHeartbeat(teamId: number, deviceId: string, sessionToken?: string, teamName?: string) {
+    const existing = this.activeSessionsMap.get(teamId);
+    const now = Date.now();
+    if (existing) {
+      existing.lastHeartbeat = now;
+      existing.deviceId = deviceId;
+      if (sessionToken) existing.sessionToken = sessionToken;
+    } else {
+      this.activeSessionsMap.set(teamId, {
+        teamId,
+        teamName: teamName || `Đội ${teamId}`,
+        deviceId,
+        sessionToken,
+        loggedInAt: now,
+        lastHeartbeat: now,
+      });
+    }
+    this.saveSessionsToLocal();
+    this.notifySessionListeners();
+    this.publishToCloud({
+      type: 'TEAM_SESSION_HEARTBEAT',
+      teamId,
+      deviceId,
+      sessionToken,
+      teamName,
+      lastHeartbeat: now,
+    });
+  }
+
+  public publishSessionRelease(teamId: number, deviceId: string) {
+    this.activeSessionsMap.delete(teamId);
+    this.saveSessionsToLocal();
+    this.notifySessionListeners();
+    this.publishToCloud({
+      type: 'TEAM_SESSION_RELEASE',
+      teamId,
+      deviceId,
+    });
+  }
+
+  public publishSessionForceUnlock(teamId: number | 'all') {
+    if (teamId === 'all') {
+      this.activeSessionsMap.clear();
+    } else {
+      this.activeSessionsMap.delete(Number(teamId));
+    }
+    this.saveSessionsToLocal();
+    this.notifySessionListeners();
+    this.publishToCloud({
+      type: 'TEAM_SESSION_FORCE_UNLOCK',
+      teamId,
+    });
+  }
+
+  public getActiveSessionsList(): CloudTeamSession[] {
+    const now = Date.now();
+    const active: CloudTeamSession[] = [];
+    this.activeSessionsMap.forEach((sess, teamId) => {
+      if (now - sess.lastHeartbeat <= 90000) {
+        active.push(sess);
+      } else {
+        this.activeSessionsMap.delete(teamId);
+      }
+    });
+    return active;
+  }
+
+  public subscribeSessions(listener: SessionListener): () => void {
+    this.sessionListeners.add(listener);
+    // Notify immediately with current active sessions
+    listener(this.getActiveSessionsList());
+    return () => {
+      this.sessionListeners.delete(listener);
+    };
+  }
+
+  private notifySessionListeners() {
+    const active = this.getActiveSessionsList();
+    this.sessionListeners.forEach((fn) => {
+      try {
+        fn(active);
+      } catch {}
+    });
+  }
+
   /**
    * Fetch initial state from cloud history or server on startup
    */
   public async fetchInitialState(): Promise<void> {
-    // A. Check cloud history for latest message
     try {
       const res = await fetch(`https://ntfy.sh/${this.topic}/json?poll=1`);
       if (res.ok) {
@@ -180,7 +440,6 @@ class SyncService {
       }
     } catch {}
 
-    // B. Also check local server API
     this.fetchTimerState();
     this.fetchBuzzerQueue();
   }
@@ -216,11 +475,7 @@ class SyncService {
   }
 
   /**
-   * Push timer state from MC / Stage screen to:
-   * 1. BroadcastChannel (immediate 0ms for tabs on same browser profile)
-   * 2. LocalStorage (immediate for standard tabs)
-   * 3. Cloud SSE via ntfy.sh (immediate for incognito, mobile, remote laptops)
-   * 4. HTTP Server (/api/timer)
+   * Push timer state from MC / Stage screen
    */
   public async pushTimerState(state: StageTimerState): Promise<void> {
     const json = JSON.stringify(state);
@@ -437,6 +692,17 @@ class SyncService {
           }
         }
       } catch {}
+
+      // 3. Poll server sessions
+      try {
+        const res = await fetch('/api/teams/sessions');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.sessions)) {
+            this.handleSessionsArray(data.sessions);
+          }
+        }
+      } catch {}
     }, intervalMs);
   }
 
@@ -449,4 +715,5 @@ class SyncService {
 }
 
 export const syncService = new SyncService();
+
 
