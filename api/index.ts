@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
 
-let appPromise: Promise<typeof import('../server').default> | null = null;
+let appPromise: Promise<typeof import('../server.js').default> | null = null;
 
 export default async function handler(req: Request, res: Response) {
   try {
-    appPromise ??= import('../server').then((module) => module.default);
+    appPromise ??= import('../server.js').then((module) => module.default);
     const app = await appPromise;
     return app(req, res);
   } catch (error) {
