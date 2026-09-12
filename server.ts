@@ -368,8 +368,8 @@ apiRouter.post('/teams/login', (req, res) => {
   // Check if team is currently active on a DIFFERENT session or DIFFERENT device
   if (existingSession && now - existingSession.lastHeartbeat <= SESSION_TIMEOUT_MS) {
     const isSameSession =
-      (sessionToken && existingSession.sessionToken === sessionToken) ||
-      (!sessionToken && existingSession.deviceId === deviceId);
+      existingSession.deviceId === deviceId ||
+      Boolean(sessionToken && existingSession.sessionToken === sessionToken);
 
     if (!isSameSession) {
       const lastActiveSec = Math.max(1, Math.round((now - existingSession.lastHeartbeat) / 1000));
@@ -439,8 +439,8 @@ apiRouter.post('/teams/heartbeat', (req, res) => {
   }
 
   const isOwner =
-    (sessionToken && session.sessionToken === sessionToken) ||
-    (!sessionToken && session.deviceId === deviceId);
+    session.deviceId === deviceId ||
+    Boolean(sessionToken && session.sessionToken === sessionToken);
 
   if (!isOwner) {
     return res.json({

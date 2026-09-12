@@ -193,7 +193,7 @@ export const teamAuthService = {
         if (existingLocal && now - existingLocal.time < 90000) {
           const isSame =
             (sessionToken && existingLocal.sessionToken === sessionToken) ||
-            (!sessionToken && existingLocal.deviceId === deviceId);
+            existingLocal.deviceId === deviceId;
 
           if (!isSame) {
             return {

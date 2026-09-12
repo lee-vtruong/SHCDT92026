@@ -285,14 +285,19 @@ class SyncService {
       const sess = payload.session as CloudTeamSession;
       if (sess && sess.teamId) {
         const existing = this.activeSessionsMap.get(sess.teamId);
+        const now = Date.now();
+        const incomingLastSeen = Number(sess.lastHeartbeat) || Number(sess.loggedInAt) || 0;
+        // Không hồi sinh claim cũ được ntfy phát lại từ lịch sử.
+        if (now - incomingLastSeen > 90000) return;
         const existingKey = existing ? `${existing.loggedInAt}_${existing.sessionToken || existing.deviceId}` : '';
         const incomingKey = `${sess.loggedInAt}_${sess.sessionToken || sess.deviceId}`;
         // Cùng lúc có hai máy nhận được đăng nhập: mọi client cùng chọn claim
         // có khóa nhỏ hơn, thay vì máy nhận message sau ghi đè máy trước.
-        if (!existing || incomingKey < existingKey || existing.deviceId === sess.deviceId) {
+        const existingExpired = !existing || now - existing.lastHeartbeat > 90000;
+        if (existingExpired || incomingKey < existingKey || existing?.deviceId === sess.deviceId) {
           this.activeSessionsMap.set(sess.teamId, {
             ...sess,
-            lastHeartbeat: Date.now(),
+            lastHeartbeat: incomingLastSeen,
           });
         }
         this.saveSessionsToLocal();
