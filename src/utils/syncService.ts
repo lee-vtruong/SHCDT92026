@@ -696,7 +696,7 @@ class SyncService {
       isRunning: false,
       currentTeamId: 1,
       updatedAt: Date.now(),
-      buzzerManualUnlocked: false,
+      buzzerManualUnlocked: true,
     };
     this.latestTimerState = defaultTimer;
     this.notifyTimerListeners(defaultTimer);

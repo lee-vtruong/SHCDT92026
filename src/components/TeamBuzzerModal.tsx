@@ -298,10 +298,9 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     )
   );
 
-  // Buzzer availability: Unlocked throughout the Rebuttal phase (as long as timeLeft > 0) OR if manually unlocked by MC
+  // Buzzer availability: ALWAYS OPEN & ACTIVE by default as requested
+  const isBuzzerOpen = true;
   const isRebuttalPhase = syncedTimerState.phase === 'rebuttal';
-  const isManualUnlocked = Boolean(syncedTimerState.buzzerManualUnlocked);
-  const isBuzzerOpen = isManualUnlocked || (isRebuttalPhase && syncedTimerState.timeLeft > 0);
   const isRebuttalCountdownRunning = isRebuttalPhase && syncedTimerState.isRunning && syncedTimerState.timeLeft > 0;
 
   const myBuzzRecord = currentTeamAuth
@@ -311,48 +310,11 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     ? safeBuzzerQueue.findIndex((b) => b.teamId === currentTeamAuth.id) + 1
     : 0;
 
-  const canBuzzNow =
-    isBuzzerOpen &&
-    !isPresentingNow &&
-    !myBuzzRecord &&
-    !hasUsedAllRebuttals &&
-    !hasRebuttedInThisRound;
+  // Always pressable by default unless the team has already clicked in the current queue
+  const canBuzzNow = !myBuzzRecord;
 
   const handleTriggerBuzzer = () => {
     if (!currentTeamAuth) return;
-
-    if (hasUsedAllRebuttals) {
-      soundManager.playError();
-      setErrorMsg('Đội bạn đã sử dụng hết 3/3 lượt phản biện trong hội thi!');
-      setTimeout(() => setErrorMsg(''), 3500);
-      return;
-    }
-
-    if (hasRebuttedInThisRound) {
-      soundManager.playError();
-      setErrorMsg('Đội bạn đã phản biện trong lượt thi này rồi (tối đa 1 lần/lượt)!');
-      setTimeout(() => setErrorMsg(''), 3500);
-      return;
-    }
-
-    if (isPresentingNow) {
-      soundManager.playError();
-      setErrorMsg('Đội bạn đang thuyết trình, không thể bấm chuông phản biện!');
-      setTimeout(() => setErrorMsg(''), 3000);
-      return;
-    }
-
-    if (!isBuzzerOpen) {
-      soundManager.playError();
-      if (isRebuttalPhase && syncedTimerState.timeLeft <= 0) {
-        setErrorMsg('Đã hết 1 phút phản biện (00:00), chuông đã tự động khóa lại!');
-      } else {
-        setErrorMsg('Chuông chỉ mở trong Lượt Phản Biện (hoặc khi Ban Tổ Chức mở chuông)!');
-      }
-      setTimeout(() => setErrorMsg(''), 3500);
-      return;
-    }
-
     if (myBuzzRecord) return;
 
     soundManager.playBuzzer();
@@ -388,17 +350,10 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isBuzzerOpen ? (
-              <span className="px-2.5 py-1 rounded-full bg-emerald-400 text-slate-950 text-xs font-black animate-pulse flex items-center gap-1 shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
-                <span>MỞ ({syncedTimerState.timeLeft}s)</span>
-              </span>
-            ) : (
-              <span className="px-2.5 py-1 rounded-full bg-black/20 text-white/90 text-xs font-semibold flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5" />
-                <span>Khóa</span>
-              </span>
-            )}
+            <span className="px-2.5 py-1 rounded-full bg-emerald-400 text-slate-950 text-xs font-black animate-pulse flex items-center gap-1 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+              <span>CHUÔNG MỞ (SẴN SÀNG)</span>
+            </span>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-black/10 hover:bg-black/20 text-white flex items-center justify-center font-bold text-sm transition-colors"
@@ -578,93 +533,25 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                 </button>
               </div>
 
-              {/* Phase & Permission Status Banner */}
-              {hasUsedAllRebuttals ? (
-                <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-400 text-rose-950 text-xs font-semibold flex items-center gap-3 text-left shadow-xs">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-sm text-rose-900 block">
-                      ĐỘI BẠN ĐÃ HẾT 3 LƯỢT PHẢN BIỆN (3/3)
+              {/* Phase & Permission Status Banner - ALWAYS ACTIVE */}
+              <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs font-semibold flex items-center gap-3 text-left shadow-sm">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Bell className="w-5 h-5 animate-bounce" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold text-sm text-emerald-900 uppercase tracking-wide">
+                      CHUÔNG ĐANG MỞ — BẤM BẤT KỲ LÚC NÀO!
                     </span>
-                    <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
-                      Theo thể lệ hội thi, mỗi đội chỉ được phản biện tối đa 3 lần. Chuông bấm của đội bạn đã được hệ thống khóa vĩnh viễn.
-                    </p>
-                  </div>
-                </div>
-              ) : hasRebuttedInThisRound ? (
-                <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-400 text-amber-950 text-xs font-semibold flex items-center gap-3 text-left shadow-xs">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-sm text-amber-900 block">
-                      ĐÃ PHẢN BIỆN TRONG LƯỢT THI NÀY
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-mono font-black text-xs">
+                      SẴN SÀNG
                     </span>
-                    <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
-                      Quy định: 1 lượt thuyết trình chỉ cho phép tối đa 1 lần bấm chuông/phản biện cho mỗi đội. Đội bạn hãy chờ lượt thi của đội tiếp theo!
-                    </p>
                   </div>
+                  <p className="text-xs text-emerald-800 mt-1">
+                    Chuông luôn mở mặc định. Chạm nút đỏ bên dưới bất cứ lúc nào để ghi nhận thứ tự chuông phản biện cho {currentTeamAuth.name}.
+                  </p>
                 </div>
-              ) : isPresentingNow ? (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-3 text-left">
-                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                  <div>
-                    <span className="font-bold text-sm">Đội bạn đang ở trên sân khấu thuyết trình!</span>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      Chuông phản biện chỉ dành cho 9 đội đối thủ bên dưới khán phòng.
-                    </p>
-                  </div>
-                </div>
-              ) : isBuzzerOpen ? (
-                <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs font-semibold flex items-center gap-3 text-left shadow-md">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <Bell className="w-5 h-5 animate-bounce" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-extrabold text-sm text-emerald-900 uppercase tracking-wide">
-                        {syncedTimerState.isRunning ? '1 PHÚT PHẢN BIỆN ĐANG ĐẾM NGƯỢC!' : 'CHUÔNG PHẢN BIỆN ĐANG MỞ!'}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-mono font-black text-xs">
-                        00:{syncedTimerState.timeLeft < 10 ? `0${syncedTimerState.timeLeft}` : syncedTimerState.timeLeft}
-                      </span>
-                    </div>
-                    <p className="text-xs text-emerald-800 mt-1">
-                      Chuông đang mở! Bấm nút đỏ bên dưới NGAY để giành quyền phản biện {presentingTeam ? presentingTeam.name : 'đội thi'} (Đội bạn còn {remainingRebuttals}/3 lượt).
-                    </p>
-                  </div>
-                </div>
-              ) : isRebuttalPhase && syncedTimerState.timeLeft <= 0 ? (
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-950 text-xs font-semibold flex items-center gap-3 text-left">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-200 text-rose-800 flex items-center justify-center shrink-0">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-sm text-rose-900">
-                      HẾT 1 PHÚT PHẢN BIỆN (00:00)
-                    </span>
-                    <p className="text-xs text-rose-700 mt-0.5">
-                      Thời gian phản biện lượt này đã hết. Chuông bấm đã được hệ thống tự động khóa lại.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium flex items-center gap-3 text-left">
-                  <div className="w-10 h-10 rounded-2xl bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900 text-xs sm:text-sm">
-                      CHUÔNG ĐANG KHÓA (Lượt {syncedTimerState.phase === 'prepare' ? 'Chuẩn Bị 1:00' : 'Trình Bày 2:00'})
-                    </span>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {presentingTeam ? `${presentingTeam.name} đang ${syncedTimerState.phase === 'prepare' ? 'chuẩn bị' : 'thuyết trình'}.` : 'Đội thi đang thực hiện phần thi.'} Chuông chỉ cho phép các đội khác bấm khi bước vào 1 phút đếm ngược Phản Biện.
-                    </p>
-                  </div>
-                </div>
-              )}
+              </div>
 
               {/* Huge Tactile Buzzer Button */}
               <div className="py-2 flex flex-col items-center justify-center">
@@ -672,23 +559,13 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                   id="team-buzzer-press-button"
                   disabled={!canBuzzNow}
                   onClick={handleTriggerBuzzer}
-                  className={`relative w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-200 select-none ${
+                  className={`relative w-48 h-48 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-200 select-none ${
                     canBuzzNow
-                      ? 'bg-gradient-to-b from-rose-500 via-red-600 to-red-700 text-white ring-8 ring-rose-400/40 hover:ring-rose-400/70 hover:scale-105 active:scale-90 active:ring-rose-500 cursor-pointer'
-                      : myBuzzRecord
-                      ? 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white ring-8 ring-emerald-300/50 scale-100 cursor-default'
-                      : hasUsedAllRebuttals
-                      ? 'bg-slate-200 border-4 border-slate-300 text-slate-400 cursor-not-allowed opacity-80'
-                      : hasRebuttedInThisRound
-                      ? 'bg-amber-100 border-4 border-amber-300 text-amber-700 cursor-not-allowed opacity-85'
-                      : isPresentingNow
-                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
-                      : isRebuttalPhase && syncedTimerState.timeLeft <= 0
-                      ? 'bg-slate-200 border-4 border-slate-300 text-slate-400 cursor-not-allowed opacity-80'
-                      : 'bg-slate-200 border-4 border-slate-300 text-slate-400 cursor-not-allowed opacity-75'
+                      ? 'bg-gradient-to-b from-rose-500 via-red-600 to-red-700 text-white ring-8 ring-rose-400/40 hover:ring-rose-400/70 hover:scale-105 active:scale-90 active:ring-rose-500 cursor-pointer shadow-rose-500/50'
+                      : 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white ring-8 ring-emerald-300/50 scale-100 cursor-default shadow-emerald-500/30'
                   }`}
                 >
-                  {/* Glowing Pulse Rings when Buzzer is Open */}
+                  {/* Glowing Pulse Rings when can buzz */}
                   {canBuzzNow && (
                     <div className="absolute inset-0 rounded-full border-4 border-rose-400 animate-ping pointer-events-none opacity-50" />
                   )}
@@ -701,37 +578,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                         Thứ tự #{myBuzzRank}
                       </span>
                     </>
-                  ) : hasUsedAllRebuttals ? (
-                    <>
-                      <Lock className="w-10 h-10 mb-1 text-slate-400" />
-                      <span className="text-base font-black tracking-wide uppercase text-slate-500 text-center px-2">
-                        HẾT 3 LƯỢT
-                      </span>
-                      <span className="text-[10px] font-medium text-slate-400 mt-0.5">
-                        Đã dùng 3/3 lượt
-                      </span>
-                    </>
-                  ) : hasRebuttedInThisRound ? (
-                    <>
-                      <CheckCircle2 className="w-10 h-10 mb-1 text-amber-500" />
-                      <span className="text-sm font-black tracking-wide uppercase text-amber-800 text-center px-2">
-                        ĐÃ PHẢN BIỆN
-                      </span>
-                      <span className="text-[10px] font-semibold text-amber-700 mt-0.5">
-                        Tối đa 1 lần/lượt
-                      </span>
-                    </>
-                  ) : isPresentingNow ? (
-                    <>
-                      <AlertCircle className="w-10 h-10 mb-1 text-slate-500" />
-                      <span className="text-base font-black tracking-wide uppercase text-center px-2">
-                        ĐANG TRÌNH BÀY
-                      </span>
-                      <span className="text-[10px] font-medium text-slate-500 mt-0.5">
-                        Dành cho 9 đội khác
-                      </span>
-                    </>
-                  ) : canBuzzNow ? (
+                  ) : (
                     <>
                       <Bell
                         className={`w-12 h-12 mb-1 ${
@@ -740,27 +587,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                       />
                       <span className="text-xl font-black tracking-wide uppercase">BẤM CHUÔNG!</span>
                       <span className="text-[11px] font-semibold text-white/90 mt-0.5">
-                        {syncedTimerState.isRunning ? `Còn ${syncedTimerState.timeLeft}s` : `Sẵn sàng (${syncedTimerState.timeLeft}s)`} • Lượt {myRebuttalsUsed + 1}/3
-                      </span>
-                    </>
-                  ) : isRebuttalPhase && syncedTimerState.timeLeft <= 0 ? (
-                    <>
-                      <Lock className="w-10 h-10 mb-1 text-slate-400" />
-                      <span className="text-base font-black tracking-wide uppercase text-slate-500">
-                        HẾT GIỜ
-                      </span>
-                      <span className="text-[10px] font-medium text-slate-400 mt-0.5">
-                        Đã khóa chuông
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-10 h-10 mb-1 text-slate-400" />
-                      <span className="text-base font-black tracking-wide uppercase text-slate-500 text-center px-2">
-                        CHUÔNG KHÓA
-                      </span>
-                      <span className="text-[10px] font-medium text-slate-400 mt-0.5">
-                        Chỉ mở ở 1p Phản Biện
+                        Chạm để giành phản biện
                       </span>
                     </>
                   )}
@@ -769,31 +596,28 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
 
               {/* Buzzer Status Feedback */}
               {myBuzzRecord ? (
-                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>
-                    Bạn đã bấm chuông thành công! Đang xếp vị trí #{myBuzzRank} trong danh sách MC.
-                  </span>
+                <div className="space-y-2">
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>
+                      Bạn đã bấm chuông thành công! Đang xếp vị trí #{myBuzzRank} trong danh sách MC.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const nextQueue = localBuzzerQueue.filter((b) => b.teamId !== currentTeamAuth.id);
+                      setLocalBuzzerQueue(nextQueue);
+                      syncService.pushBuzzerQueue(nextQueue);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Hủy lượt bấm này (Để bấm thử lại)</span>
+                  </button>
                 </div>
-              ) : hasUsedAllRebuttals ? (
-                <p className="text-xs text-rose-600 font-bold">
-                  🚫 Đội bạn đã dùng hết 3 lượt phản biện trong hội thi (3/3 lượt).
-                </p>
-              ) : hasRebuttedInThisRound ? (
-                <p className="text-xs text-amber-700 font-bold">
-                  ⚠️ Đội bạn đã thực hiện phản biện trong lượt này rồi (tối đa 1 lần/lượt).
-                </p>
-              ) : canBuzzNow ? (
-                <p className="text-xs text-emerald-700 font-bold animate-pulse">
-                  🔥 Đang trong 1 phút đếm ngược Phản Biện! Chạm nút đỏ phía trên để ghi danh hàng đợi!
-                </p>
               ) : (
-                <p className="text-xs text-slate-500 font-medium">
-                  {isRebuttalPhase && !syncedTimerState.isRunning
-                    ? 'Chờ MC bắt đầu chạy đếm ngược 1 phút để chuông tự động mở.'
-                    : isRebuttalPhase && syncedTimerState.timeLeft <= 0
-                    ? 'Đã hết 1 phút phản biện của lượt này.'
-                    : 'Bình thường chuông sẽ khóa, chỉ tự động mở trong 1 phút đếm ngược Phản Biện.'}
+                <p className="text-center text-xs text-slate-400">
+                  Chạm nút chuông để ghi danh tức thì lên màn hình máy chiếu sân khấu
                 </p>
               )}
 

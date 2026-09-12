@@ -682,7 +682,7 @@ export default function App() {
       totalDuration: duration,
       isRunning: false,
       currentTeamId: teamId,
-      buzzerManualUnlocked: false,
+      buzzerManualUnlocked: true,
       updatedAt: Date.now(),
     };
     setStageTimerState(nextTimerState);
@@ -738,14 +738,14 @@ export default function App() {
     setCurrentTeamId(1);
     setSelectedScoringTeamId(1);
 
-    // 5. Reset Stage Timer to Team 1 prepare (60s, paused, buzzer locked)
+    // 5. Reset Stage Timer to Team 1 prepare (60s, paused, buzzer always unlocked)
     const defaultTimer: StageTimerState = {
       phase: 'prepare',
       timeLeft: 60,
       totalDuration: 60,
       isRunning: false,
       currentTeamId: 1,
-      buzzerManualUnlocked: false,
+      buzzerManualUnlocked: true,
       updatedAt: Date.now(),
     };
     setStageTimerState(defaultTimer);

@@ -119,7 +119,7 @@ let currentStageTimer: StageTimerState = {
   isRunning: false,
   currentTeamId: 1,
   updatedAt: Date.now(),
-  buzzerManualUnlocked: false,
+  buzzerManualUnlocked: true,
 };
 
 let buzzerQueue: BuzzerRecord[] = [];
@@ -471,7 +471,7 @@ apiRouter.post('/admin/reset-all', (req, res) => {
     return res.status(403).json({ success: false, error: 'Sai mật khẩu quản trị viên' });
   }
 
-  // 1. Reset timer to Team 1, prepare phase, 60s, paused, lock buzzer
+  // 1. Reset timer to Team 1, prepare phase, 60s, paused, keep buzzer always unlocked
   currentStageTimer = {
     phase: 'prepare',
     timeLeft: 60,
@@ -479,7 +479,7 @@ apiRouter.post('/admin/reset-all', (req, res) => {
     isRunning: false,
     currentTeamId: 1,
     updatedAt: Date.now(),
-    buzzerManualUnlocked: false,
+    buzzerManualUnlocked: true,
   };
   saveTimerToDisk();
 

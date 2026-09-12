@@ -150,7 +150,8 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
     emitTimerChange({ buzzerManualUnlocked: next });
   };
 
-  const isBuzzerOpen = buzzerManualUnlocked || (phase === 'rebuttal' && timeLeft > 0);
+  // Buzzer is always open & active by default
+  const isBuzzerOpen = true;
 
   // Modal / Form state for awarding rebuttal
   const [selectedDebaterTeamId, setSelectedDebaterTeamId] = useState<number | null>(null);
@@ -531,50 +532,30 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 {PHASE_TITLES[phase].subtitle}
               </p>
 
-              {/* Live Buzzer Gate Status Indicator & Manual Toggle */}
+              {/* Live Buzzer Gate Status Indicator & Reset Queue */}
               <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
-                {isBuzzerOpen ? (
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                    <Bell className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
-                    <span>
-                      CHUÔNG ĐANG MỞ {timeLeft > 0 ? `(Còn ${timeLeft}s)` : ''} — 10 đội có thể bấm chuông!
-                    </span>
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium">
-                    <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>
-                      {phase === 'rebuttal' && timeLeft <= 0
-                        ? 'HẾT 1 PHÚT PHẢN BIỆN — Chuông đã tự động khóa'
-                        : 'Chuông đang khóa (Chỉ mở khi vào Lượt Phản Biện)'}
-                    </span>
-                  </div>
-                )}
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                  <Bell className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
+                  <span>
+                    CHUÔNG MẶC ĐỊNH MỞ (SẴN SÀNG) — 10 đội có thể bấm chuông bất cứ lúc nào!
+                  </span>
+                </div>
 
-                {/* MC / Admin manual unlock/lock toggle */}
-                <button
-                  id="mc-toggle-manual-buzzer-btn"
-                  onClick={handleToggleManualBuzzer}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${
-                    buzzerManualUnlocked
-                      ? 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100'
-                      : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
-                  }`}
-                  title={buzzerManualUnlocked ? 'Bấm để hủy mở chuông thủ công' : 'Bấm để mở cưỡng bức chuông cho các đội'}
-                >
-                  {buzzerManualUnlocked ? (
-                    <>
-                      <Lock className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Khóa Chuông Lại</span>
-                    </>
-                  ) : (
-                    <>
-                      <Bell className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Mở Chuông Thủ Công</span>
-                    </>
-                  )}
-                </button>
+                {onResetBuzzer && (
+                  <button
+                    id="mc-reset-buzzer-btn"
+                    onClick={() => {
+                      onResetBuzzer();
+                      soundManager.playDing();
+                    }}
+                    className="px-3 py-1.5 rounded-full text-xs font-bold transition-all border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    title="Xóa danh sách hàng đợi chuông hiện tại để các đội bấm lượt mới"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Đặt Lại Chuông</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -866,17 +847,10 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 </h3>
               </div>
               <div className="flex items-center gap-2">
-                {phase === 'rebuttal' && isRunning && timeLeft > 0 ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-extrabold animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    <span>Mở ({timeLeft}s)</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-[10px] font-semibold">
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>Khóa</span>
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-extrabold animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span>Chuông Mở (Sẵn sàng)</span>
+                </span>
                 {onOpenTeamBuzzer && (
                   <button
                     onClick={onOpenTeamBuzzer}
