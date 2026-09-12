@@ -284,10 +284,17 @@ class SyncService {
     else if (payload.type === 'TEAM_SESSION_CLAIM' && payload.session) {
       const sess = payload.session as CloudTeamSession;
       if (sess && sess.teamId) {
-        this.activeSessionsMap.set(sess.teamId, {
-          ...sess,
-          lastHeartbeat: Date.now(),
-        });
+        const existing = this.activeSessionsMap.get(sess.teamId);
+        const existingKey = existing ? `${existing.loggedInAt}_${existing.sessionToken || existing.deviceId}` : '';
+        const incomingKey = `${sess.loggedInAt}_${sess.sessionToken || sess.deviceId}`;
+        // Cùng lúc có hai máy nhận được đăng nhập: mọi client cùng chọn claim
+        // có khóa nhỏ hơn, thay vì máy nhận message sau ghi đè máy trước.
+        if (!existing || incomingKey < existingKey || existing.deviceId === sess.deviceId) {
+          this.activeSessionsMap.set(sess.teamId, {
+            ...sess,
+            lastHeartbeat: Date.now(),
+          });
+        }
         this.saveSessionsToLocal();
         this.notifySessionListeners();
       }
@@ -297,9 +304,9 @@ class SyncService {
         const existing = this.activeSessionsMap.get(teamId);
         const now = Date.now();
         if (existing) {
-          existing.lastHeartbeat = now;
-          if (payload.deviceId) existing.deviceId = payload.deviceId;
-          if (payload.sessionToken) existing.sessionToken = payload.sessionToken;
+          const isOwner = existing.deviceId === payload.deviceId ||
+            Boolean(existing.sessionToken && existing.sessionToken === payload.sessionToken);
+          if (isOwner) existing.lastHeartbeat = now;
         } else if (payload.session) {
           this.activeSessionsMap.set(teamId, {
             ...(payload.session as CloudTeamSession),
@@ -384,9 +391,9 @@ class SyncService {
     const existing = this.activeSessionsMap.get(teamId);
     const now = Date.now();
     if (existing) {
-      existing.lastHeartbeat = now;
-      existing.deviceId = deviceId;
-      if (sessionToken) existing.sessionToken = sessionToken;
+      const isOwner = existing.deviceId === deviceId ||
+        Boolean(existing.sessionToken && existing.sessionToken === sessionToken);
+      if (isOwner) existing.lastHeartbeat = now;
     } else {
       this.activeSessionsMap.set(teamId, {
         teamId,
@@ -746,6 +753,12 @@ class SyncService {
       try { this.channel.postMessage({ type: 'BUZZER_UPDATE', queue: [] }); } catch {}
     }
     this.notifyBuzzerListeners([]);
+  }
+
+  public isSessionOwner(teamId: number, deviceId: string, sessionToken?: string): boolean {
+    const session = this.activeSessionsMap.get(teamId);
+    if (!session) return true;
+    return session.deviceId === deviceId || Boolean(sessionToken && session.sessionToken === sessionToken);
   }
 
   public getBuzzerBlockedTeamIds(): number[] {

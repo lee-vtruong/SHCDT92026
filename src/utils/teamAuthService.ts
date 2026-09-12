@@ -256,40 +256,29 @@ export const teamAuthService = {
         };
       }
     } catch {
-      // Network failure or offline -> fallback to Cloud/Local claim
+      return {
+        success: false,
+        error: 'Không thể kết nối máy chủ để xác nhận thiết bị. Vui lòng kiểm tra mạng và thử lại.',
+      };
     }
 
-    // --- STEP 3: Fallback Offline/Cloud Claim ---
-    this.markLocalSession(teamId, deviceId, sessionToken);
-    syncService.publishSessionClaim({
-      teamId,
-      teamName,
-      deviceId,
-      sessionToken,
-      loggedInAt: now,
-      lastHeartbeat: now,
-      userAgent,
-    });
-
     return {
-      success: true,
-      account: {
-        id: teamId,
-        name: teamName,
-        code: `doi${teamId}`,
-      },
+      success: false,
+      error: 'Máy chủ không trả về kết quả đăng nhập hợp lệ. Vui lòng thử lại.',
     };
   },
 
   async logout(teamId: number): Promise<void> {
     const deviceId = this.getDeviceId();
     const sessionToken = this.getSessionToken();
+    const ownsSession = syncService.isSessionOwner(teamId, deviceId, sessionToken);
     this.clearLocalSession(teamId);
     try {
       sessionStorage.removeItem(SESSION_TOKEN_KEY);
     } catch {}
 
     // Broadcast release over Cloud Realtime SSE
+    if (!ownsSession) return;
     syncService.publishSessionRelease(teamId, deviceId);
 
     try {
