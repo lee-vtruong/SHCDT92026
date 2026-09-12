@@ -55,6 +55,10 @@ class SyncService {
   constructor() {
     this.topic = getSyncRoomTopic();
     this.loadSessionsFromLocal();
+    try {
+      const savedBuzzer = localStorage.getItem(SYNC_KEYS.BUZZER_QUEUE);
+      if (savedBuzzer) this.lastBuzzerJson = savedBuzzer;
+    } catch {}
 
     // 1. Channel for instant 0ms sync across tabs on same browser profile
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -860,35 +864,8 @@ class SyncService {
         }
       } catch {}
 
-      // 2. Poll Buzzer
-      try {
-        const res = await fetch('/api/buzzer');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && Array.isArray(data.queue)) {
-            const queue = data.queue as BuzzerRecord[];
-            const json = JSON.stringify(queue);
-            if (json !== this.lastBuzzerJson) {
-              this.lastBuzzerJson = json;
-              this.notifyBuzzerListeners(queue);
-              try {
-                localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, json);
-              } catch {}
-            }
-          }
-        }
-      } catch {}
-
-      // 3. Poll server sessions
-      try {
-        const res = await fetch('/api/teams/sessions');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && Array.isArray(data.sessions)) {
-            this.handleSessionsArray(data.sessions);
-          }
-        }
-      } catch {}
+      // Buzzer and sessions are event-driven. Polling them from Vercel /tmp
+      // makes different serverless instances overwrite each other and flicker.
     }, intervalMs);
   }
 

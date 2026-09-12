@@ -156,6 +156,10 @@ export const teamAuthService = {
 
     const teamName = `Đội ${teamId}`;
 
+    // Ask live devices to announce themselves before deciding ownership.
+    syncService.queryActiveSessions();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+
     // --- STEP 1: Strict Check against Realtime Cloud & Local Sessions ---
     // If another device already claimed this team in the last 90s, BLOCK IMMEDIATELY
     const cloudSessions = syncService.getActiveSessionsList();

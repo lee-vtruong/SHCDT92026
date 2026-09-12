@@ -364,37 +364,17 @@ export default function App() {
     }
   }, [isAdmin]);
 
-  // Periodic heartbeat & single-device ownership verification for logged in team
+  // Keep the session alive. A serverless heartbeat may hit a different Vercel
+  // instance, so a negative heartbeat must never eject an already logged-in team.
   useEffect(() => {
     if (!currentTeamAuth) return;
 
-    let isMounted = true;
-
-    // Check immediately upon load
-    teamAuthService.sendHeartbeat(currentTeamAuth.id).then((isValid) => {
-      if (!isMounted) return;
-      if (!isValid) {
-        setCurrentTeamAuth(null);
-        try {
-          localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
-        } catch {}
-      }
-    });
-
-    // Check periodically every 10 seconds
-    const interval = setInterval(async () => {
-      const isValid = await teamAuthService.sendHeartbeat(currentTeamAuth.id);
-      if (!isMounted) return;
-      if (!isValid) {
-        setCurrentTeamAuth(null);
-        try {
-          localStorage.removeItem(STORAGE_KEYS.TEAM_AUTH);
-        } catch {}
-      }
-    }, 10000);
+    teamAuthService.sendHeartbeat(currentTeamAuth.id).catch(() => {});
+    const interval = setInterval(() => {
+      teamAuthService.sendHeartbeat(currentTeamAuth.id).catch(() => {});
+    }, 15000);
 
     return () => {
-      isMounted = false;
       clearInterval(interval);
     };
   }, [currentTeamAuth]);

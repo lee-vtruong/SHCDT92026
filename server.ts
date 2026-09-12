@@ -366,7 +366,10 @@ apiRouter.post('/teams/login', (req, res) => {
   const existingSession = activeSessions.get(teamId);
 
   // Check if team is currently active on a DIFFERENT session or DIFFERENT device
-  if (existingSession && now - existingSession.lastHeartbeat <= SESSION_TIMEOUT_MS) {
+  // A Vercel instance's /tmp is not shared and can outlive a request. It must
+  // not reject a device based on stale, instance-local data. Cross-device
+  // ownership on production is coordinated by the realtime client channel.
+  if (!process.env.VERCEL && existingSession && now - existingSession.lastHeartbeat <= SESSION_TIMEOUT_MS) {
     const isSameSession =
       existingSession.deviceId === deviceId ||
       Boolean(sessionToken && existingSession.sessionToken === sessionToken);
