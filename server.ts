@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 
 interface TeamSession {
   sessionToken: string;
@@ -178,7 +177,6 @@ loadTimerFromDisk();
 loadBuzzerFromDisk();
 
 export const app = express();
-const PORT = 3000;
 
 app.use(express.json());
 
@@ -534,27 +532,3 @@ apiRouter.post('/admin/reset-all', (req, res) => {
 // Mount router under BOTH /api and root (to handle all Vercel rewrite styles seamlessly)
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
-
-  // Vite middleware setup and server listen
-  if (!process.env.VERCEL) {
-    if (process.env.NODE_ENV !== 'production') {
-      createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      }).then((vite) => {
-        app.use(vite.middlewares);
-        app.listen(PORT, '0.0.0.0', () => {
-          console.log(`Server running on http://localhost:${PORT}`);
-        });
-      });
-    } else {
-      const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-      app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
-    }
-  }
