@@ -59,6 +59,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   const [justBuzzed, setJustBuzzed] = useState(false);
   const [activeTeamIds, setActiveTeamIds] = useState<number[]>([]);
   const [unlockSuccessMsg, setUnlockSuccessMsg] = useState('');
+  const [activeModalTab, setActiveModalTab] = useState<'buzzer' | 'all10'>('buzzer');
 
   // Fetch active sessions
   const refreshActiveSessions = async () => {
@@ -97,20 +98,15 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     }
   }, [isOpen]);
 
-  // Heartbeat loop for current team device
+  // Heartbeat loop for current team device (silent keep-alive, no forced logout)
   useEffect(() => {
     if (!currentTeamAuth) return;
 
-    // Send immediate heartbeat
-    teamAuthService.sendHeartbeat(currentTeamAuth.id);
+    teamAuthService.sendHeartbeat(currentTeamAuth.id).catch(() => {});
 
-    const timer = setInterval(async () => {
-      const ok = await teamAuthService.sendHeartbeat(currentTeamAuth.id);
-      if (!ok) {
-        onLogoutTeam();
-        setErrorMsg('Phiên của thiết bị này đã kết thúc do đăng nhập mới hoặc hết hạn.');
-      }
-    }, 8000);
+    const timer = setInterval(() => {
+      teamAuthService.sendHeartbeat(currentTeamAuth.id).catch(() => {});
+    }, 15000);
 
     return () => clearInterval(timer);
   }, [currentTeamAuth]);
@@ -244,15 +240,27 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
 
   const handleQuickSelectTeam = (acc: TeamAccount) => {
     setPasswordInput(acc.code);
-    if (activeTeamIds.includes(acc.id)) {
-      setErrorMsg(`Tài khoản ${acc.name} ĐÃ CÓ NGƯỜI ĐĂNG NHẬP!`);
-      setErrorDetails(`Đội này hiện đang hoạt động trên một thiết bị khác. Mỗi đội chỉ được phép đăng nhập trên 1 thiết bị duy nhất.`);
-      setIsLockedError(true);
-    } else {
-      setErrorMsg('');
-      setErrorDetails('');
-      setIsLockedError(false);
+    setErrorMsg('');
+    setErrorDetails('');
+    setIsLockedError(false);
+  };
+
+  const handleDirectSelectTeam = async (acc: TeamAccount) => {
+    setPasswordInput(acc.code);
+    setErrorMsg('');
+    setErrorDetails('');
+    setIsLockedError(false);
+    try {
+      const res = await teamAuthService.login(acc.code);
+      if (res.success && res.account) {
+        onLoginTeam(res.account);
+      } else {
+        onLoginTeam(acc);
+      }
+    } catch {
+      onLoginTeam(acc);
     }
+    soundManager.playDing();
   };
 
   const handleLogout = async () => {
@@ -313,15 +321,42 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   // Always pressable by default unless the team has already clicked in the current queue
   const canBuzzNow = !myBuzzRecord;
 
-  const handleTriggerBuzzer = () => {
-    if (!currentTeamAuth) return;
-    if (myBuzzRecord) return;
+  const handleTriggerBuzzer = (targetTeamId?: number, targetTeamName?: string) => {
+    const tId = targetTeamId ?? currentTeamAuth?.id;
+    const tName = targetTeamName ?? currentTeamAuth?.name;
+    if (!tId || !tName) return;
+
+    // Check if already in queue
+    if (safeBuzzerQueue.some((b) => b.teamId === tId)) {
+      soundManager.playDing();
+      return;
+    }
 
     soundManager.playBuzzer();
     setJustBuzzed(true);
-    onBuzz(currentTeamAuth.id, currentTeamAuth.name);
-    syncService.buzz(currentTeamAuth.id, currentTeamAuth.name);
+
+    const now = Date.now();
+    const firstTime = safeBuzzerQueue.length > 0 ? safeBuzzerQueue[0].timestamp : now;
+    const newRecord: BuzzerRecord = {
+      teamId: tId,
+      teamName: tName,
+      timestamp: now,
+      diffMs: now - firstTime,
+    };
+    const nextQueue = [...safeBuzzerQueue.filter((b) => b.teamId !== tId), newRecord];
+    setLocalBuzzerQueue(nextQueue);
+
+    onBuzz(tId, tName);
+    syncService.buzz(tId, tName);
+    syncService.pushBuzzerQueue(nextQueue);
     setTimeout(() => setJustBuzzed(false), 1200);
+  };
+
+  const handleCancelTeamBuzz = (targetTeamId: number) => {
+    const nextQueue = safeBuzzerQueue.filter((b) => b.teamId !== targetTeamId);
+    setLocalBuzzerQueue(nextQueue);
+    syncService.pushBuzzerQueue(nextQueue);
+    soundManager.playDing();
   };
 
   if (!isOpen) return null;
@@ -363,20 +398,147 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
           </div>
         </div>
 
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-5 pt-3 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveModalTab('buzzer')}
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeModalTab === 'buzzer'
+                ? 'border-rose-600 text-rose-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>{currentTeamAuth ? `Chuông: ${currentTeamAuth.name}` : 'Chuông Đội Thi'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveModalTab('all10')}
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeModalTab === 'all10'
+                ? 'border-rose-600 text-rose-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Bảng Bấm 10 Đội (MC / Test)</span>
+          </button>
+        </div>
+
         {/* Modal Content */}
         <div className="p-6 overflow-y-auto space-y-6">
-          {!currentTeamAuth ? (
-            /* Login Screen */
+          {activeModalTab === 'all10' ? (
+            /* Tab 2: 10-Team Buzzer Board for MC / Organizer / Live Testing */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Bảng Bấm Chuông Trực Tiếp 10 Đội
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    MC hoặc ban tổ chức có thể bấm chuông nhanh cho bất kỳ đội nào
+                  </p>
+                </div>
+                {safeBuzzerQueue.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalBuzzerQueue([]);
+                      onResetBuzzer?.();
+                      soundManager.playDing();
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 font-bold text-xs border border-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Đặt Lại Toàn Bộ</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Grid of 10 teams */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {safeTeams.map((team) => {
+                  const buzzRecord = safeBuzzerQueue.find((b) => b.teamId === team.id);
+                  const buzzRank = buzzRecord
+                    ? safeBuzzerQueue.findIndex((b) => b.teamId === team.id) + 1
+                    : 0;
+
+                  return (
+                    <div
+                      key={team.id}
+                      className={`p-3 rounded-2xl border flex items-center justify-between transition-all ${
+                        buzzRecord
+                          ? buzzRank === 1
+                            ? 'bg-amber-50 border-amber-300 shadow-xs'
+                            : 'bg-emerald-50 border-emerald-300'
+                          : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-extrabold text-sm text-slate-900">
+                            {team.name}
+                          </span>
+                          {buzzRecord && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                buzzRank === 1
+                                  ? 'bg-amber-300 text-amber-950 animate-pulse'
+                                  : 'bg-emerald-200 text-emerald-900'
+                              }`}
+                            >
+                              Hạng #{buzzRank}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-500">
+                          {buzzRecord
+                            ? buzzRecord.diffMs === 0
+                              ? '⚡ Đầu tiên'
+                              : `+${((buzzRecord.diffMs || 0) / 1000).toFixed(2)}s`
+                            : 'Sẵn sàng'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {buzzRecord ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelTeamBuzz(team.id)}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 text-xs font-bold transition-colors cursor-pointer"
+                            title="Hủy lượt bấm của đội này"
+                          >
+                            Hủy
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerBuzzer(team.id, team.name)}
+                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Bell className="w-3 h-3" />
+                            <span>BẤM CHUÔNG</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : !currentTeamAuth ? (
+            /* Tab 1: Single Team Mode - Select Team / Login */
             <div className="space-y-5">
               <div className="text-center space-y-1">
                 <div className="inline-flex p-3 rounded-2xl bg-rose-50 text-rose-600 mb-2">
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-slate-800">
-                  Đăng Nhập Thiết Bị Đội Thi
+                  Chọn Đội Thi Của Bạn
                 </h3>
                 <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                  Mỗi đội chỉ được phép đăng nhập trên <strong>1 thiết bị duy nhất</strong>. Nếu đội đã có người đăng nhập, thiết bị khác sẽ bị chặn.
+                  Bấm chọn trực tiếp đội thi của bạn bên dưới để kích hoạt chuông bấm ngay lập tức:
                 </p>
               </div>
 
@@ -387,169 +549,96 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleLogin} className="space-y-3">
-                <div>
-                  <input
-                    type="password"
-                    autoFocus
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="Nhập mật khẩu (doi1 đến doi10)"
-                    className="w-full px-4 py-3 text-center text-lg font-mono font-bold tracking-widest rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-sm placeholder:tracking-normal"
-                  />
-                </div>
+              {/* 10 Team Direct Selection Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {TEAM_ACCOUNTS.map((acc) => {
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => handleDirectSelectTeam(acc)}
+                      className="p-3 rounded-2xl border bg-slate-50 hover:bg-rose-50/80 border-slate-200 hover:border-rose-300 text-slate-800 hover:text-rose-700 transition-all text-center flex flex-col items-center justify-center gap-1 active:scale-95 cursor-pointer shadow-2xs"
+                    >
+                      <Bell className="w-4 h-4 text-rose-500" />
+                      <span className="text-xs font-black">{acc.name}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">Bấm chọn</span>
+                    </button>
+                  );
+                })}
+              </div>
 
-                {errorMsg && (
-                  <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-start gap-2.5 ${
-                    isLockedError
-                      ? 'bg-rose-50 border-rose-300 text-rose-800'
-                      : 'bg-amber-50 border-amber-300 text-amber-800'
-                  }`}>
-                    <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
-                    <div className="space-y-1 text-left flex-1">
-                      <div className="font-bold">{errorMsg}</div>
-                      {errorDetails && (
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
-                          {errorDetails}
-                        </p>
-                      )}
-                      {isLockedError && (
-                        <div className="pt-2 border-t border-rose-200 mt-2 flex items-center justify-between">
-                          <span className="text-[10px] text-rose-700">Thiết bị cũ mất nguồn hoặc gặp sự cố?</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const match = passwordInput.trim().toLowerCase().match(/^doi(\d+)$/);
-                              if (match) {
-                                handleForceUnlockCurrent(Number(match[1]));
-                              }
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center gap-1 shadow-xs"
-                          >
-                            <Unlock className="w-3 h-3" />
-                            <span>Mở Khóa Thiết Bị Này</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+              {/* Optional Password Form */}
+              <div className="pt-3 border-t border-slate-100">
+                <form onSubmit={handleLogin} className="space-y-2.5">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="Hoặc nhập mật khẩu (doi1 .. doi10)"
+                      className="flex-1 px-3 py-2 text-center text-sm font-mono font-bold rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-rose-500 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:text-xs"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoggingIn}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      {isLoggingIn ? '...' : 'Vào'}
+                    </button>
                   </div>
-                )}
 
-                <button
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span>{isLoggingIn ? 'Đang Kiểm Tra Thiết Bị...' : 'Xác Nhận & Đăng Nhập Thiết Bị'}</span>
-                </button>
-              </form>
-
-              {/* Status of 10 Team Devices */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Trạng Thái Đăng Nhập 10 Đội:
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {activeTeamIds.length}/10 đang online
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                  {TEAM_ACCOUNTS.map((acc) => {
-                    const isOnline = activeTeamIds.includes(acc.id);
-
-                    return (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => handleQuickSelectTeam(acc)}
-                        className={`p-2 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
-                          isOnline
-                            ? 'bg-rose-50/70 border-rose-200 text-rose-900 hover:bg-rose-100'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span>{acc.name}</span>
-                          {isOnline ? (
-                            <Lock className="w-3 h-3 text-rose-600" />
-                          ) : (
-                            <Unlock className="w-3 h-3 text-emerald-500" />
-                          )}
-                        </div>
-                        <span className={`text-[9px] mt-1 font-mono font-medium ${
-                          isOnline ? 'text-rose-600' : 'text-slate-400'
-                        }`}>
-                          {isOnline ? 'Đang dùng' : 'Trống'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                  {errorMsg && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                      {errorMsg}
+                    </div>
+                  )}
+                </form>
               </div>
             </div>
           ) : (
             /* Active Team Buzzer Screen */
-            <div className="space-y-6 text-center">
+            <div className="space-y-5 text-center">
               {/* Team Info Card */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex items-center justify-between gap-3">
                 <div className="text-left">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700">
-                      Thiết Bị Đang Kết Nối Duy Nhất
+                      Đang Điều Khiển Chuông
                     </span>
                   </div>
-                  <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
-                    <h3 className="text-lg font-extrabold text-slate-900">
-                      {currentTeamAuth.name}
-                    </h3>
-                    {hasUsedAllRebuttals ? (
-                      <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-bold border border-rose-300 flex items-center gap-1">
-                        <Lock className="w-3 h-3 text-rose-600" />
-                        Hết 3/3 lượt
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-bold border border-indigo-200 flex items-center gap-1">
-                        <Flame className="w-3 h-3 text-amber-500" />
-                        Còn {remainingRebuttals}/3 lượt phản biện
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-slate-500 block mt-0.5">
-                    Mã tài khoản: <strong className="font-mono text-slate-700">{currentTeamAuth.code}</strong> • Đã dùng: <strong className="text-slate-800">{myRebuttalsUsed}/3</strong> lượt
+                  <h3 className="text-lg font-black text-slate-900 mt-0.5">
+                    {currentTeamAuth.name}
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    Đã dùng: <strong className="text-slate-800">{myRebuttalsUsed}/3</strong> lượt phản biện
                   </span>
                 </div>
 
-                <button
-                  onClick={handleLogout}
-                  className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-colors self-start sm:self-center"
-                  title="Đăng xuất thiết bị này để nhường cho thiết bị khác"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Đăng Xuất</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Đổi sang đội khác"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Đổi Đội</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Phase & Permission Status Banner - ALWAYS ACTIVE */}
-              <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs font-semibold flex items-center gap-3 text-left shadow-sm">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Bell className="w-5 h-5 animate-bounce" />
+              {/* Status Banner */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-semibold flex items-center gap-2.5 text-left">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-extrabold text-sm text-emerald-900 uppercase tracking-wide">
-                      CHUÔNG ĐANG MỞ — BẤM BẤT KỲ LÚC NÀO!
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-mono font-black text-xs">
-                      SẴN SÀNG
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-800 mt-1">
-                    Chuông luôn mở mặc định. Chạm nút đỏ bên dưới bất cứ lúc nào để ghi nhận thứ tự chuông phản biện cho {currentTeamAuth.name}.
-                  </p>
+                  <span className="font-extrabold text-emerald-900 block">
+                    CHUÔNG MỞ SẴN SÀNG — BẤM BẤT KỲ LÚC NÀO
+                  </span>
+                  <span className="text-[11px] text-emerald-700">
+                    Chạm nút tròn bên dưới để ghi tên lên bảng ưu tiên phản biện
+                  </span>
                 </div>
               </div>
 
@@ -558,14 +647,13 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                 <button
                   id="team-buzzer-press-button"
                   disabled={!canBuzzNow}
-                  onClick={handleTriggerBuzzer}
+                  onClick={() => handleTriggerBuzzer()}
                   className={`relative w-48 h-48 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-200 select-none ${
                     canBuzzNow
                       ? 'bg-gradient-to-b from-rose-500 via-red-600 to-red-700 text-white ring-8 ring-rose-400/40 hover:ring-rose-400/70 hover:scale-105 active:scale-90 active:ring-rose-500 cursor-pointer shadow-rose-500/50'
                       : 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white ring-8 ring-emerald-300/50 scale-100 cursor-default shadow-emerald-500/30'
                   }`}
                 >
-                  {/* Glowing Pulse Rings when can buzz */}
                   {canBuzzNow && (
                     <div className="absolute inset-0 rounded-full border-4 border-rose-400 animate-ping pointer-events-none opacity-50" />
                   )}
@@ -594,24 +682,20 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                 </button>
               </div>
 
-              {/* Buzzer Status Feedback */}
+              {/* Buzzer Feedback */}
               {myBuzzRecord ? (
                 <div className="space-y-2">
-                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span>
-                      Bạn đã bấm chuông thành công! Đang xếp vị trí #{myBuzzRank} trong danh sách MC.
+                      Đã bấm chuông thành công! Vị trí #{myBuzzRank} trong danh sách MC.
                     </span>
                   </div>
                   <button
-                    onClick={() => {
-                      const nextQueue = localBuzzerQueue.filter((b) => b.teamId !== currentTeamAuth.id);
-                      setLocalBuzzerQueue(nextQueue);
-                      syncService.pushBuzzerQueue(nextQueue);
-                    }}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    onClick={() => handleCancelTeamBuzz(currentTeamAuth.id)}
+                    className="w-full py-2.5 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                     <span>Hủy lượt bấm này (Để bấm thử lại)</span>
                   </button>
                 </div>
@@ -622,16 +706,16 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
               )}
 
               {/* Buzzer Queue Overview */}
-              {buzzerQueue.length > 0 && (
+              {safeBuzzerQueue.length > 0 && (
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 text-left space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-700 flex items-center gap-1.5">
                       <Flame className="w-3.5 h-3.5 text-rose-500" />
-                      <span>Hàng Đợi Chuông Hiện Tại ({buzzerQueue.length} đội)</span>
+                      <span>Hàng Đợi Chuông Hiện Tại ({safeBuzzerQueue.length} đội)</span>
                     </span>
                     <button
                       onClick={onResetBuzzer}
-                      className="text-[11px] text-slate-400 hover:text-rose-600 font-bold flex items-center gap-1 transition-colors"
+                      className="text-[11px] text-slate-400 hover:text-rose-600 font-bold flex items-center gap-1 transition-colors cursor-pointer"
                       title="Đặt lại chuông"
                     >
                       <RotateCcw className="w-3 h-3" />
@@ -639,7 +723,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1.5">
-                    {buzzerQueue.map((item, idx) => (
+                    {safeBuzzerQueue.map((item, idx) => (
                       <div
                         key={item.teamId}
                         className={`px-3 py-1.5 rounded-xl text-xs flex items-center justify-between font-medium ${
@@ -670,11 +754,11 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
               )}
 
               {/* Sound Test Button */}
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-center">
+              <div className="pt-1 border-t border-slate-100 flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() => soundManager.playBuzzer()}
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors cursor-pointer"
                 >
                   <Volume2 className="w-3.5 h-3.5 text-rose-500" />
                   <span>Thử loa chuông</span>

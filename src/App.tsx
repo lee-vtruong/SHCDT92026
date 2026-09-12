@@ -435,29 +435,46 @@ export default function App() {
   };
 
   const handleBuzz = async (teamId: number, teamName: string) => {
-    // Stage timer must be in Rebuttal phase
-    if (stageTimerState.phase !== 'rebuttal') {
-      soundManager.playError();
+    // Buzzer is always active and open 24/7 as requested
+    const id = Number(teamId);
+    const name = teamName || `Đội ${id}`;
+
+    // Prevent duplicate buzz in the same round
+    if (buzzerQueue.some((b) => b.teamId === id)) {
+      soundManager.playDing();
       return;
     }
 
-    // Team must be eligible according to tournament rules (max 3 rebuttals, max 1 per round, not presenting team)
-    const effectivePresentingTeamId = stageTimerState.currentTeamId ?? currentTeamId;
-    const rebuttalCheck = canTeamRebut(teamId, effectivePresentingTeamId, rebuttals);
-    if (!rebuttalCheck.canRebut) {
-      soundManager.playError();
-      return;
-    }
+    const now = Date.now();
+    const firstTimestamp = buzzerQueue.length > 0 ? buzzerQueue[0].timestamp : now;
+    const newRecord: BuzzerRecord = {
+      teamId: id,
+      teamName: name,
+      timestamp: now,
+      diffMs: now - firstTimestamp,
+    };
+
+    const updatedQueue = [...buzzerQueue, newRecord];
+    setBuzzerQueue(updatedQueue);
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, JSON.stringify(updatedQueue));
+    } catch {}
 
     soundManager.playBuzzer();
-    await syncService.buzz(teamId, teamName);
+
+    // Broadcast across Cloud SSE, HTTP API, and BroadcastChannel
+    await syncService.buzz(id, name);
+    await syncService.pushBuzzerQueue(updatedQueue);
   };
 
   const handleResetBuzzer = async () => {
     setBuzzerQueue([]);
     try {
+      localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, '[]');
       localStorage.removeItem(STORAGE_KEYS.BUZZER_QUEUE);
     } catch {}
+    soundManager.playDing();
     await syncService.resetBuzzerQueue();
   };
 
@@ -901,6 +918,7 @@ export default function App() {
             currentJudge={currentJudge}
             isAdmin={isAdmin}
             buzzerQueue={buzzerQueue}
+            onBuzz={handleBuzz}
             onResetBuzzer={handleResetBuzzer}
             onOpenTeamBuzzer={() => setIsTeamBuzzerModalOpen(true)}
             currentTeamAuth={currentTeamAuth}
