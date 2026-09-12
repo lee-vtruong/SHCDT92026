@@ -532,3 +532,5 @@ apiRouter.post('/admin/reset-all', (req, res) => {
 // Mount router under BOTH /api and root (to handle all Vercel rewrite styles seamlessly)
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
+
+export default app;
