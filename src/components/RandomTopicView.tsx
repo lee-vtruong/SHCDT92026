@@ -25,7 +25,7 @@ interface RandomTopicViewProps {
   topics: Topic[];
   currentTeamId: number;
   onSelectTeam: (teamId: number) => void;
-  onAssignTopic: (teamId: number, topicId: number | null, onlyCurrentTeam?: boolean) => void;
+  onAssignTopic: (teamId: number, topicId: number | null) => void;
   onClearOtherTopics?: (keepTeamId: number) => void;
   onClearAllTopics?: () => void;
   onGoToStage: (teamId: number) => void;
@@ -48,7 +48,6 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
   const [justRevealedTopic, setJustRevealedTopic] = useState<Topic | null>(null);
   const [drawMode, setDrawMode] = useState<'roulette' | 'envelopes'>('roulette');
   const [avoidAssignedTopics, setAvoidAssignedTopics] = useState(true);
-  const [onlyCurrentTeamHasTopic, setOnlyCurrentTeamHasTopic] = useState(true);
 
   const spinIntervalRef = useRef<number | null>(null);
 
@@ -132,7 +131,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
         // Final reveal!
         setIsSpinning(false);
         setJustRevealedTopic(chosenTopic);
-        onAssignTopic(selectedTeamId, chosenTopic.id, onlyCurrentTeamHasTopic);
+        onAssignTopic(selectedTeamId, chosenTopic.id);
         soundManager.playScoreAward();
         triggerConfetti();
       }
@@ -145,7 +144,7 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
   const handleEnvelopeClick = (topic: Topic) => {
     if (isSpinning) return;
     setJustRevealedTopic(topic);
-    onAssignTopic(selectedTeamId, topic.id, onlyCurrentTeamHasTopic);
+    onAssignTopic(selectedTeamId, topic.id);
     soundManager.playScoreAward();
     triggerConfetti();
   };
@@ -211,21 +210,6 @@ export const RandomTopicView: React.FC<RandomTopicViewProps> = ({
             >
               {avoidAssignedTopics ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
               <span>{avoidAssignedTopics ? 'Tránh Trùng Đề (Bật)' : 'Tránh Trùng (Tắt)'}</span>
-            </button>
-
-            {/* Only Current Team Has Topic Toggle */}
-            <button
-              type="button"
-              onClick={() => setOnlyCurrentTeamHasTopic(!onlyCurrentTeamHasTopic)}
-              className={`px-3 py-2 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                onlyCurrentTeamHasTopic
-                  ? 'bg-cyan-500/25 border-cyan-300 text-cyan-200 ring-1 ring-cyan-400/40'
-                  : 'bg-white/10 border-white/20 text-slate-300'
-              }`}
-              title="Khi bốc thăm, chỉ đội hiện tại có đề, các đội còn lại sẽ chưa có đề"
-            >
-              <CheckCircle2 className={`w-3.5 h-3.5 ${onlyCurrentTeamHasTopic ? 'text-cyan-300' : 'text-slate-400'}`} />
-              <span>{onlyCurrentTeamHasTopic ? 'Chỉ Đội Hiện Tại Có Đề (Bật)' : 'Chỉ Đội Này Có Đề (Tắt)'}</span>
             </button>
           </div>
         </div>

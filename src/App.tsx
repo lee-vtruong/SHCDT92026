@@ -105,24 +105,6 @@ export default function App() {
             return team;
           });
 
-          // Check if all teams had pre-assigned topics from legacy initial state
-          // If so and no team has presented yet, reset topicId to null so teams draw fresh
-          const hasScoresOrPresented = migrated.some(
-            (t: Team) =>
-              t.hasPresented ||
-              (t.presentationScores &&
-                (t.presentationScores.topicUnderstanding +
-                  t.presentationScores.argumentation +
-                  t.presentationScores.feasibility +
-                  t.presentationScores.creativity +
-                  t.presentationScores.presentationSkills) > 0)
-          );
-          const legacyInitKey = 'v2_topics_undrawn_cleared';
-          if (!localStorage.getItem(legacyInitKey) && !hasScoresOrPresented) {
-            localStorage.setItem(legacyInitKey, 'true');
-            return migrated.map((t: Team) => ({ ...t, topicId: null }));
-          }
-
           return migrated;
         }
       }
@@ -270,6 +252,18 @@ export default function App() {
       } else if (e.key === STORAGE_KEYS.TEAM_AUTH) {
         try {
           setCurrentTeamAuth(e.newValue ? JSON.parse(e.newValue) : null);
+        } catch {}
+      } else if (e.key === STORAGE_KEYS.TEAMS) {
+        try {
+          if (e.newValue) {
+            setTeams(JSON.parse(e.newValue));
+          }
+        } catch {}
+      } else if (e.key === STORAGE_KEYS.REBUTTALS) {
+        try {
+          if (e.newValue) {
+            setRebuttals(JSON.parse(e.newValue));
+          }
         } catch {}
       }
     };
@@ -645,32 +639,16 @@ export default function App() {
 
   const handleAssignTopic = (
     teamId: number,
-    topicId: number | null,
-    onlyCurrentTeam: boolean = true
+    topicId: number | null
   ) => {
-    setTeams((prev) => {
-      if (onlyCurrentTeam) {
-        // Đội hiện tại có đề, các đội còn lại sẽ chưa có đề (topicId: null)
-        return prev.map((t) => ({
-          ...t,
-          topicId: t.id === teamId ? topicId : null,
-        }));
-      }
-
-      const previousTeamWithTopic = prev.find((t) => t.topicId === topicId && t.id !== teamId);
-      const currentTeam = prev.find((t) => t.id === teamId);
-      const currentTopic = currentTeam?.topicId ?? null;
-
-      return prev.map((t) => {
+    setTeams((prev) =>
+      prev.map((t) => {
         if (t.id === teamId) {
           return { ...t, topicId };
         }
-        if (previousTeamWithTopic && t.id === previousTeamWithTopic.id) {
-          return { ...t, topicId: currentTopic };
-        }
         return t;
-      });
-    });
+      })
+    );
   };
 
   // Clear topics of all other teams (only keep current team)
