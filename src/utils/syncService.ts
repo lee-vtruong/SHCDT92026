@@ -48,6 +48,7 @@ class SyncService {
   private lastTimerSignature = '';
   private lastBuzzerJson = '';
   private buzzerBlockedTeamIds: number[] = [];
+  private lastBuzzerResetAt = 0;
   private lastSessionsJson = '';
   private topic = '';
 
@@ -246,7 +247,20 @@ class SyncService {
     } 
     // Buzzer Sync
     else if (payload.type === 'BUZZER_UPDATE' && Array.isArray(payload.queue)) {
-      const queue = payload.queue as BuzzerRecord[];
+      let queue = payload.queue as BuzzerRecord[];
+      const incomingWinner = queue[0];
+      if (incomingWinner && incomingWinner.timestamp <= this.lastBuzzerResetAt) return;
+
+      // Nhiều serverless instance có thể cùng nhận một lần bấm. Luôn giữ mốc
+      // thời gian nhỏ nhất để mọi màn hình hội tụ về đúng một người thắng.
+      let currentQueue: BuzzerRecord[] = [];
+      try { currentQueue = JSON.parse(this.lastBuzzerJson || '[]'); } catch {}
+      const currentWinner = currentQueue[0];
+      if (incomingWinner && currentWinner && currentWinner.timestamp <= incomingWinner.timestamp) {
+        queue = [currentWinner];
+      } else if (incomingWinner) {
+        queue = [incomingWinner];
+      }
       const json = JSON.stringify(queue);
       if (json !== this.lastBuzzerJson) {
         this.lastBuzzerJson = json;
@@ -256,6 +270,7 @@ class SyncService {
         } catch {}
       }
     } else if (payload.type === 'BUZZER_RESET') {
+      this.lastBuzzerResetAt = Math.max(this.lastBuzzerResetAt, Number(payload.resetAt) || Date.now());
       if (Number(payload.consumedTeamId) && !this.buzzerBlockedTeamIds.includes(Number(payload.consumedTeamId))) {
         this.buzzerBlockedTeamIds.push(Number(payload.consumedTeamId));
       }
@@ -573,6 +588,20 @@ class SyncService {
    * Push buzzer queue updates to all devices
    */
   public async pushBuzzerQueue(queue: BuzzerRecord[]): Promise<void> {
+    if (queue.length > 0) {
+      let currentQueue: BuzzerRecord[] = [];
+      try { currentQueue = JSON.parse(this.lastBuzzerJson || '[]'); } catch {}
+      const currentWinner = currentQueue[0];
+      const incomingWinner = queue[0];
+      if (currentWinner && (
+        currentWinner.timestamp < incomingWinner.timestamp ||
+        (currentWinner.timestamp === incomingWinner.timestamp && currentWinner.teamId < incomingWinner.teamId)
+      )) {
+        queue = [currentWinner];
+      } else {
+        queue = [incomingWinner];
+      }
+    }
     const json = JSON.stringify(queue);
     this.lastBuzzerJson = json;
 
@@ -604,6 +633,11 @@ class SyncService {
         if (data && data.success && Array.isArray(data.queue)) {
           const queue = data.queue as BuzzerRecord[];
           this.buzzerBlockedTeamIds = Array.isArray(data.blockedTeamIds) ? data.blockedTeamIds : [];
+          // Trên Vercel, /tmp không dùng chung giữa các instance. Một GET rỗng
+          // không được phép xóa người thắng đã nhận qua realtime.
+          if (queue.length === 0 && this.lastBuzzerJson && this.lastBuzzerJson !== '[]') {
+            try { return JSON.parse(this.lastBuzzerJson) as BuzzerRecord[]; } catch {}
+          }
           this.notifyBuzzerListeners(queue);
           return queue;
         }
@@ -632,11 +666,13 @@ class SyncService {
         if (data && data.success) {
           const queue = (data.queue || []) as BuzzerRecord[];
           await this.pushBuzzerQueue(queue);
-          this.notifyBuzzerListeners(queue);
+          let finalQueue = queue;
+          try { finalQueue = JSON.parse(this.lastBuzzerJson || '[]'); } catch {}
+          this.notifyBuzzerListeners(finalQueue);
           return {
             success: true,
-            queue,
-            rank: data.rank || queue.length,
+            queue: finalQueue,
+            rank: finalQueue[0]?.teamId === teamId ? 1 : 0,
           };
         }
       } else {
@@ -684,6 +720,8 @@ class SyncService {
    * Reset buzzer queue across all devices
    */
   public async resetBuzzerQueue(consumedTeamId?: number): Promise<void> {
+    const resetAt = Date.now();
+    this.lastBuzzerResetAt = resetAt;
     try {
       const res = await fetch('/api/buzzer/reset', {
         method: 'POST',
@@ -699,9 +737,14 @@ class SyncService {
       type: 'BUZZER_RESET',
       queue: [],
       consumedTeamId,
+      resetAt,
     });
 
-    await this.pushBuzzerQueue([]);
+    this.lastBuzzerJson = '[]';
+    try { localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, '[]'); } catch {}
+    if (this.channel) {
+      try { this.channel.postMessage({ type: 'BUZZER_UPDATE', queue: [] }); } catch {}
+    }
     this.notifyBuzzerListeners([]);
   }
 

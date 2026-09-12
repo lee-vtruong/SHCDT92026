@@ -402,8 +402,8 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-5 pt-3 gap-2">
+        {/* Team devices only need the single, unambiguous buzzer screen. */}
+        <div className="hidden">
           <button
             type="button"
             onClick={() => setActiveModalTab('buzzer')}
@@ -697,7 +697,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                   </div>
                   <button
                     onClick={() => handleCancelTeamBuzz(currentTeamAuth.id)}
-                    className="w-full py-2.5 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    className="hidden"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                     <span>Hủy lượt bấm này (Để bấm thử lại)</span>
@@ -719,7 +719,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                     </span>
                     <button
                     onClick={() => onResetBuzzer()}
-                      className="text-[11px] text-slate-400 hover:text-rose-600 font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      className="hidden"
                       title="Đặt lại chuông"
                     >
                       <RotateCcw className="w-3 h-3" />
