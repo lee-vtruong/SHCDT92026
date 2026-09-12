@@ -244,43 +244,40 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   }, [handleTogglePlay]);
 
   // Navigation handlers
-  const handleNextTeam = () => {
-    if (currentTeamId < teams.length) {
-      const nextId = currentTeamId + 1;
-      setCurrentTeamId(nextId);
+  const handleSelectTeam = useCallback(
+    (teamId: number) => {
+      setCurrentTeamId(teamId);
       const duration = PHASE_DURATIONS.prepare;
       setPhase('prepare');
       setTimeLeft(duration);
       setTotalPhaseDuration(duration);
       setIsRunning(false);
-      onResetBuzzer?.();
+      setBuzzerManualUnlocked(false);
+      if (onResetBuzzer) {
+        onResetBuzzer();
+      }
+      soundManager.playDing();
       emitTimerChange({
-        currentTeamId: nextId,
+        currentTeamId: teamId,
         phase: 'prepare',
         timeLeft: duration,
         totalDuration: duration,
         isRunning: false,
+        buzzerManualUnlocked: false,
       });
+    },
+    [onResetBuzzer, emitTimerChange, setCurrentTeamId]
+  );
+
+  const handleNextTeam = () => {
+    if (currentTeamId < teams.length) {
+      handleSelectTeam(currentTeamId + 1);
     }
   };
 
   const handlePrevTeam = () => {
     if (currentTeamId > 1) {
-      const prevId = currentTeamId - 1;
-      setCurrentTeamId(prevId);
-      const duration = PHASE_DURATIONS.prepare;
-      setPhase('prepare');
-      setTimeLeft(duration);
-      setTotalPhaseDuration(duration);
-      setIsRunning(false);
-      onResetBuzzer?.();
-      emitTimerChange({
-        currentTeamId: prevId,
-        phase: 'prepare',
-        timeLeft: duration,
-        totalDuration: duration,
-        isRunning: false,
-      });
+      handleSelectTeam(currentTeamId - 1);
     }
   };
 
@@ -368,6 +365,18 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
+
+              {currentTeamId !== 1 && (
+                <button
+                  id="stage-back-team-1-btn"
+                  onClick={() => handleSelectTeam(1)}
+                  className="ml-1.5 px-2.5 py-1 rounded-lg bg-cyan-100 hover:bg-cyan-200 text-cyan-800 text-xs font-bold transition-all border border-cyan-300 flex items-center gap-1 shadow-2xs active:scale-95"
+                  title="Quay về Đội 1 ngay lập tức"
+                >
+                  <RotateCcw className="w-3 h-3 text-cyan-700" />
+                  <span>Về Đội 1</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -383,10 +392,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
               <button
                 key={t.id}
                 id={`select-team-btn-${t.id}`}
-                onClick={() => {
-                  setCurrentTeamId(t.id);
-                  handleSwitchPhase('prepare');
-                }}
+                onClick={() => handleSelectTeam(t.id)}
                 className={`relative flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all border text-center ${
                   isSelected
                     ? 'bg-gradient-to-b from-cyan-50 to-blue-50 border-cyan-500 text-cyan-950 shadow-xs ring-2 ring-cyan-400/30'

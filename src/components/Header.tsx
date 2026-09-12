@@ -14,7 +14,8 @@ import {
   Lock,
   GraduationCap,
   Bell,
-  Shuffle
+  Shuffle,
+  RotateCcw
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 import { JudgeInfo, TeamAccount } from '../types';
@@ -43,9 +44,13 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   soundEnabled,
   setSoundEnabled,
+  onOpenAdminReset,
+  onExportData,
+  onImportData,
   currentJudge,
   onOpenJudgeAuth,
   isAdmin = false,
+  onLogoutAdmin,
   onOpenTeamBuzzer,
   currentTeamAuth,
   buzzerQueueCount = 0,
@@ -258,6 +263,20 @@ export const Header: React.FC<HeaderProps> = ({
                 <KeyRound className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <span className="hidden sm:inline">Đăng Nhập BGK</span>
                 <span className="sm:hidden">BGK</span>
+              </button>
+            )}
+
+            {/* Admin Reset All / Change Team */}
+            {onOpenAdminReset && (
+              <button
+                id="header-admin-reset-btn"
+                onClick={onOpenAdminReset}
+                title="Bảng điều khiển Admin: Đổi đội / Reset toàn bộ về mặc định (Mật khẩu: admin123)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 transition-all shadow-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span className="hidden sm:inline">Reset / Đổi Đội</span>
+                <span className="sm:hidden">Reset</span>
               </button>
             )}
 

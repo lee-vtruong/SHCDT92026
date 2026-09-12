@@ -8,7 +8,7 @@ import { RulesView } from './components/RulesView';
 import { JudgesIntroView } from './components/JudgesIntroView';
 import { RandomTopicView } from './components/RandomTopicView';
 import { JudgeAuthModal } from './components/JudgeAuthModal';
-import { AdminResetModal } from './components/AdminResetModal';
+import { AdminResetModal, AdminResetOptions } from './components/AdminResetModal';
 import { TeamBuzzerModal } from './components/TeamBuzzerModal';
 import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord, StageTimerState } from './types';
 import { DEFAULT_TOPICS, INITIAL_TEAMS, generateRandomTeamTopicAssignment } from './data/defaultTopics';
@@ -671,12 +671,37 @@ export default function App() {
     setActiveTab('scoring');
   };
 
-  // Reset scores to 0 (Protected by admin password admin123)
-  const handleAdminResetScores = (resetTopicsAlso: boolean = false) => {
-    setTeams((prev) =>
-      prev.map((team) => ({
+  // Quick team switch with stage timer sync
+  const handleSwitchToTeam = (teamId: number) => {
+    setCurrentTeamId(teamId);
+    setSelectedScoringTeamId(teamId);
+    const duration = 60;
+    const nextTimerState: StageTimerState = {
+      phase: 'prepare',
+      timeLeft: duration,
+      totalDuration: duration,
+      isRunning: false,
+      currentTeamId: teamId,
+      buzzerManualUnlocked: false,
+      updatedAt: Date.now(),
+    };
+    setStageTimerState(nextTimerState);
+    syncService.pushTimerState(nextTimerState);
+    soundManager.playDing();
+  };
+
+  // Reset scores and optionally entire competition state to factory default
+  const handleAdminResetScores = (optionsOrResetTopics?: AdminResetOptions | boolean) => {
+    const isOptionsObj = typeof optionsOrResetTopics === 'object' && optionsOrResetTopics !== null;
+    const resetTopics = isOptionsObj ? optionsOrResetTopics.resetTopics : Boolean(optionsOrResetTopics);
+    const resetAll = isOptionsObj ? optionsOrResetTopics.resetAll : Boolean(optionsOrResetTopics);
+    const resetSessions = isOptionsObj ? optionsOrResetTopics.resetSessions : false;
+
+    // 1. Reset teams (topics, judge scores, presentation scores, status)
+    setTeams((prev) => {
+      const updated = prev.map((team) => ({
         ...team,
-        topicId: resetTopicsAlso ? null : team.topicId,
+        topicId: (resetTopics || resetAll) ? null : team.topicId,
         judgeScores: {},
         presentationScores: {
           topicUnderstanding: 0,
@@ -688,19 +713,53 @@ export default function App() {
         presentationNotes: '',
         hasPresented: false,
         presentationCompletedAt: undefined,
-      }))
-    );
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
 
-    if (resetTopicsAlso) {
+    // 2. Reset topics if requested
+    if (resetTopics || resetAll) {
       setTopics(DEFAULT_TOPICS);
-      localStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(DEFAULT_TOPICS));
+      try {
+        localStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(DEFAULT_TOPICS));
+      } catch {}
     }
 
+    // 3. Reset rebuttals
     setRebuttals([]);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.REBUTTALS);
+    } catch {}
+
+    // 4. Reset team selection back to Team 1
     setCurrentTeamId(1);
     setSelectedScoringTeamId(1);
-    localStorage.removeItem(STORAGE_KEYS.REBUTTALS);
-    soundManager.playDing();
+
+    // 5. Reset Stage Timer to Team 1 prepare (60s, paused, buzzer locked)
+    const defaultTimer: StageTimerState = {
+      phase: 'prepare',
+      timeLeft: 60,
+      totalDuration: 60,
+      isRunning: false,
+      currentTeamId: 1,
+      buzzerManualUnlocked: false,
+      updatedAt: Date.now(),
+    };
+    setStageTimerState(defaultTimer);
+
+    // 6. Reset Buzzer Queue
+    setBuzzerQueue([]);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, '[]');
+    } catch {}
+
+    // 7. Push to Server & Cloud sync
+    syncService.pushAdminResetAll('admin123', resetSessions);
+
+    soundManager.playScoreAward();
   };
 
   // Export JSON backup
@@ -890,12 +949,12 @@ export default function App() {
             teams={teams}
             topics={topics}
             currentTeamId={currentTeamId}
-            onSelectTeam={(teamId) => setCurrentTeamId(teamId)}
+            onSelectTeam={(teamId) => handleSwitchToTeam(teamId)}
             onAssignTopic={handleAssignTopic}
             onClearOtherTopics={handleClearOtherTopics}
             onClearAllTopics={handleClearAllTopics}
             onGoToStage={(teamId) => {
-              setCurrentTeamId(teamId);
+              handleSwitchToTeam(teamId);
               setActiveTab('stage');
             }}
           />
@@ -961,6 +1020,8 @@ export default function App() {
         isOpen={isAdminResetModalOpen}
         onClose={() => setIsAdminResetModalOpen(false)}
         onConfirmResetScores={handleAdminResetScores}
+        currentTeamId={currentTeamId}
+        onSwitchToTeam1={() => handleSwitchToTeam(1)}
       />
 
       {/* 10 Teams Buzzer Modal */}

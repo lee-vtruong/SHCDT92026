@@ -686,6 +686,58 @@ class SyncService {
   }
 
   /**
+   * Admin Reset All: reset timer to Team 1 (60s prepare), clear buzzer, and notify server & clients
+   */
+  public async pushAdminResetAll(adminPassword = 'admin123', resetSessions = false): Promise<boolean> {
+    const defaultTimer: StageTimerState = {
+      phase: 'prepare',
+      timeLeft: 60,
+      totalDuration: 60,
+      isRunning: false,
+      currentTeamId: 1,
+      updatedAt: Date.now(),
+      buzzerManualUnlocked: false,
+    };
+    this.latestTimerState = defaultTimer;
+    this.notifyTimerListeners(defaultTimer);
+    this.notifyBuzzerListeners([]);
+
+    try {
+      localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(defaultTimer));
+      localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, '[]');
+    } catch {}
+
+    // Call server API
+    try {
+      await fetch('/api/admin/reset-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword, resetSessions }),
+      });
+    } catch {}
+
+    // Broadcast on channel & Cloud SSE
+    if (this.channel) {
+      try {
+        this.channel.postMessage({ type: 'TIMER_UPDATE', timer: defaultTimer });
+        this.channel.postMessage({ type: 'BUZZER_RESET', queue: [] });
+        this.channel.postMessage({ type: 'ADMIN_RESET_ALL' });
+      } catch {}
+    }
+
+    this.publishToCloud({
+      type: 'TIMER_UPDATE',
+      timer: defaultTimer,
+    });
+    this.publishToCloud({
+      type: 'BUZZER_RESET',
+      queue: [],
+    });
+
+    return true;
+  }
+
+  /**
    * Start polling server timer & buzzer state as secondary fallback
    */
   public startPolling(intervalMs = 800) {

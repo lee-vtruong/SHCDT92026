@@ -464,6 +464,43 @@ apiRouter.post('/teams/force-unlock', (req, res) => {
   });
 });
 
+// Admin reset all to factory default
+apiRouter.post('/admin/reset-all', (req, res) => {
+  const { adminPassword, resetSessions } = req.body;
+  if (adminPassword !== 'admin123') {
+    return res.status(403).json({ success: false, error: 'Sai mật khẩu quản trị viên' });
+  }
+
+  // 1. Reset timer to Team 1, prepare phase, 60s, paused, lock buzzer
+  currentStageTimer = {
+    phase: 'prepare',
+    timeLeft: 60,
+    totalDuration: 60,
+    isRunning: false,
+    currentTeamId: 1,
+    updatedAt: Date.now(),
+    buzzerManualUnlocked: false,
+  };
+  saveTimerToDisk();
+
+  // 2. Clear buzzer queue
+  buzzerQueue = [];
+  saveBuzzerToDisk();
+
+  // 3. Clear sessions if requested
+  if (resetSessions) {
+    activeSessions.clear();
+    saveSessionsToDisk();
+  }
+
+  res.json({
+    success: true,
+    message: 'Đã thiết lập lại toàn bộ về trạng thái ban đầu (Đội 1)!',
+    timer: currentStageTimer,
+    queue: buzzerQueue,
+  });
+});
+
 // Mount router under BOTH /api and root (to handle all Vercel rewrite styles seamlessly)
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
