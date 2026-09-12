@@ -273,12 +273,11 @@ export const teamAuthService = {
     const sessionToken = this.getSessionToken();
     const ownsSession = syncService.isSessionOwner(teamId, deviceId, sessionToken);
     this.clearLocalSession(teamId);
+    // Broadcast release over Cloud Realtime SSE
+    if (!ownsSession) return;
     try {
       sessionStorage.removeItem(SESSION_TOKEN_KEY);
     } catch {}
-
-    // Broadcast release over Cloud Realtime SSE
-    if (!ownsSession) return;
     syncService.publishSessionRelease(teamId, deviceId);
 
     try {

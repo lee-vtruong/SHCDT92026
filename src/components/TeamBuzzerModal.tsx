@@ -111,24 +111,6 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     return () => clearInterval(timer);
   }, [currentTeamAuth]);
 
-  // Nếu hai thiết bị đăng nhập gần như đồng thời, đồng bộ realtime chọn một
-  // chủ sở hữu duy nhất và tự đăng xuất thiết bị thua mà không giải phóng máy thắng.
-  useEffect(() => {
-    if (!currentTeamAuth) return;
-    return syncService.subscribeSessions(() => {
-      const isOwner = syncService.isSessionOwner(
-        currentTeamAuth.id,
-        teamAuthService.getDeviceId(),
-        teamAuthService.getSessionToken(),
-      );
-      if (!isOwner) {
-        setErrorMsg(`Tài khoản ${currentTeamAuth.name} đã được đăng nhập trên thiết bị khác.`);
-        setIsLockedError(true);
-        teamAuthService.logout(currentTeamAuth.id).finally(onLogoutTeam);
-      }
-    });
-  }, [currentTeamAuth, onLogoutTeam]);
-
   // Local synced stage timer state across tabs, server, or via prop
   const [syncedTimerState, setSyncedTimerState] = useState<StageTimerState>(() => {
     if (stageTimerState) return stageTimerState;

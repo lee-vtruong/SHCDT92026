@@ -308,14 +308,16 @@ class SyncService {
       if (teamId) {
         const existing = this.activeSessionsMap.get(teamId);
         const now = Date.now();
+        const heartbeatAt = Number(payload.lastHeartbeat) || 0;
+        if (!heartbeatAt || now - heartbeatAt > 90000) return;
         if (existing) {
           const isOwner = existing.deviceId === payload.deviceId ||
             Boolean(existing.sessionToken && existing.sessionToken === payload.sessionToken);
-          if (isOwner) existing.lastHeartbeat = now;
+          if (isOwner) existing.lastHeartbeat = Math.max(existing.lastHeartbeat, heartbeatAt);
         } else if (payload.session) {
           this.activeSessionsMap.set(teamId, {
             ...(payload.session as CloudTeamSession),
-            lastHeartbeat: now,
+            lastHeartbeat: heartbeatAt,
           });
         } else {
           this.activeSessionsMap.set(teamId, {
@@ -323,8 +325,8 @@ class SyncService {
             teamName: payload.teamName || `Đội ${teamId}`,
             deviceId: payload.deviceId || 'unknown',
             sessionToken: payload.sessionToken,
-            loggedInAt: now,
-            lastHeartbeat: now,
+            loggedInAt: heartbeatAt,
+            lastHeartbeat: heartbeatAt,
           });
         }
         this.saveSessionsToLocal();
@@ -332,7 +334,10 @@ class SyncService {
       }
     } else if (payload.type === 'TEAM_SESSION_RELEASE' && payload.teamId) {
       const teamId = Number(payload.teamId);
-      this.activeSessionsMap.delete(teamId);
+      const existing = this.activeSessionsMap.get(teamId);
+      if (!existing || !payload.deviceId || existing.deviceId === payload.deviceId) {
+        this.activeSessionsMap.delete(teamId);
+      }
       this.saveSessionsToLocal();
       this.notifySessionListeners();
     } else if (payload.type === 'TEAM_SESSION_FORCE_UNLOCK') {
