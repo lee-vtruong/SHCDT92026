@@ -123,6 +123,7 @@ let currentStageTimer: StageTimerState = {
 };
 
 let buzzerQueue: BuzzerRecord[] = [];
+let buzzerBlockedTeamIds: number[] = [];
 
 function loadTimerFromDisk() {
   try {
@@ -153,6 +154,10 @@ function loadBuzzerFromDisk() {
       const saved = JSON.parse(raw);
       if (Array.isArray(saved)) {
         buzzerQueue = saved;
+        buzzerBlockedTeamIds = [];
+      } else if (saved && Array.isArray(saved.queue)) {
+        buzzerQueue = saved.queue;
+        buzzerBlockedTeamIds = Array.isArray(saved.blockedTeamIds) ? saved.blockedTeamIds : [];
       }
     }
   } catch (err) {
@@ -162,7 +167,7 @@ function loadBuzzerFromDisk() {
 
 function saveBuzzerToDisk() {
   try {
-    fs.writeFileSync(BUZZER_FILE, JSON.stringify(buzzerQueue, null, 2), 'utf-8');
+    fs.writeFileSync(BUZZER_FILE, JSON.stringify({ queue: buzzerQueue, blockedTeamIds: buzzerBlockedTeamIds }, null, 2), 'utf-8');
   } catch (err) {
     console.error('Could not save buzzer file:', err);
   }
@@ -218,6 +223,7 @@ apiRouter.post('/timer', (req, res) => {
   loadTimerFromDisk();
   const { phase, timeLeft, totalDuration, isRunning, currentTeamId, buzzerManualUnlocked } = req.body;
   const now = Date.now();
+  const isNewPresentingTurn = typeof currentTeamId === 'number' && currentTeamId !== currentStageTimer.currentTeamId;
   currentStageTimer = {
     phase: phase || currentStageTimer.phase,
     timeLeft: typeof timeLeft === 'number' ? timeLeft : currentStageTimer.timeLeft,
@@ -228,6 +234,11 @@ apiRouter.post('/timer', (req, res) => {
     updatedAt: now,
   };
   saveTimerToDisk();
+  if (isNewPresentingTurn) {
+    buzzerQueue = [];
+    buzzerBlockedTeamIds = [];
+    saveBuzzerToDisk();
+  }
   res.json({
     success: true,
     timer: currentStageTimer,
@@ -241,6 +252,7 @@ apiRouter.get('/buzzer', (req, res) => {
   res.json({
     success: true,
     queue: buzzerQueue,
+    blockedTeamIds: buzzerBlockedTeamIds,
     serverTime: Date.now(),
   });
 });
@@ -254,22 +266,32 @@ apiRouter.post('/buzzer/buzz', (req, res) => {
   const id = Number(teamId);
   const now = Date.now();
 
-  const existingIndex = buzzerQueue.findIndex((b) => b.teamId === id);
-  if (existingIndex !== -1) {
-    return res.json({
-      success: true,
-      alreadyBuzzed: true,
-      rank: existingIndex + 1,
+  if (buzzerBlockedTeamIds.includes(id)) {
+    return res.status(409).json({
+      success: false,
+      blocked: true,
+      error: 'Đội đã phản biện trong lượt này',
       queue: buzzerQueue,
+      blockedTeamIds: buzzerBlockedTeamIds,
     });
   }
 
-  const firstTimestamp = buzzerQueue.length > 0 ? buzzerQueue[0].timestamp : now;
+  // Chỉ chốt người bấm nhanh nhất. Mọi lần bấm sau đó đều nhận cùng kết quả.
+  if (buzzerQueue.length > 0) {
+    return res.status(409).json({
+      success: false,
+      locked: true,
+      winner: buzzerQueue[0],
+      queue: buzzerQueue,
+      blockedTeamIds: buzzerBlockedTeamIds,
+    });
+  }
+
   const newRecord: BuzzerRecord = {
     teamId: id,
     teamName: teamName || TEAM_NAMES[id] || `Đội ${id}`,
     timestamp: now,
-    diffMs: now - firstTimestamp,
+    diffMs: 0,
   };
 
   buzzerQueue.push(newRecord);
@@ -280,13 +302,20 @@ apiRouter.post('/buzzer/buzz', (req, res) => {
     rank: buzzerQueue.length,
     record: newRecord,
     queue: buzzerQueue,
+    blockedTeamIds: buzzerBlockedTeamIds,
   });
 });
 
 apiRouter.post('/buzzer/reset', (req, res) => {
+  loadBuzzerFromDisk();
+  const consumedTeamId = Number(req.body?.consumedTeamId);
+  // Chỉ khóa đội thực sự thắng chuông, không tin một teamId tùy ý từ client.
+  if (consumedTeamId && buzzerQueue[0]?.teamId === consumedTeamId && !buzzerBlockedTeamIds.includes(consumedTeamId)) {
+    buzzerBlockedTeamIds.push(consumedTeamId);
+  }
   buzzerQueue = [];
   saveBuzzerToDisk();
-  res.json({ success: true, queue: [] });
+  res.json({ success: true, queue: [], blockedTeamIds: buzzerBlockedTeamIds });
 });
 
 // Get active sessions list (which teams are currently logged in on a device)
@@ -485,6 +514,7 @@ apiRouter.post('/admin/reset-all', (req, res) => {
 
   // 2. Clear buzzer queue
   buzzerQueue = [];
+  buzzerBlockedTeamIds = [];
   saveBuzzerToDisk();
 
   // 3. Clear sessions if requested

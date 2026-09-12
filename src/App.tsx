@@ -439,43 +439,21 @@ export default function App() {
     const id = Number(teamId);
     const name = teamName || `Đội ${id}`;
 
-    // Prevent duplicate buzz in the same round
-    if (buzzerQueue.some((b) => b.teamId === id)) {
-      soundManager.playDing();
-      return;
-    }
-
-    const now = Date.now();
-    const firstTimestamp = buzzerQueue.length > 0 ? buzzerQueue[0].timestamp : now;
-    const newRecord: BuzzerRecord = {
-      teamId: id,
-      teamName: name,
-      timestamp: now,
-      diffMs: now - firstTimestamp,
-    };
-
-    const updatedQueue = [...buzzerQueue, newRecord];
-    setBuzzerQueue(updatedQueue);
-
-    try {
-      localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, JSON.stringify(updatedQueue));
-    } catch {}
-
-    soundManager.playBuzzer();
-
-    // Broadcast across Cloud SSE, HTTP API, and BroadcastChannel
-    await syncService.buzz(id, name);
-    await syncService.pushBuzzerQueue(updatedQueue);
+    // Server is authoritative: it atomically accepts exactly the first team.
+    const result = await syncService.buzz(id, name);
+    setBuzzerQueue(result.queue);
+    if (result.success && result.queue[0]?.teamId === id) soundManager.playBuzzer();
+    else soundManager.playDing();
   };
 
-  const handleResetBuzzer = async () => {
+  const handleResetBuzzer = async (consumedTeamId?: number) => {
     setBuzzerQueue([]);
     try {
       localStorage.setItem(STORAGE_KEYS.BUZZER_QUEUE, '[]');
       localStorage.removeItem(STORAGE_KEYS.BUZZER_QUEUE);
     } catch {}
     soundManager.playDing();
-    await syncService.resetBuzzerQueue();
+    await syncService.resetBuzzerQueue(consumedTeamId);
   };
 
   const handleLoginWithCode = (code: string): boolean => {
@@ -893,7 +871,7 @@ export default function App() {
             </button>
             {(isAdmin || currentJudge) && (
               <button
-                onClick={handleResetBuzzer}
+                onClick={() => handleResetBuzzer()}
                 className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[11px] font-bold"
               >
                 Đặt lại

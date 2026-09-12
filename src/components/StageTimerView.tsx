@@ -44,7 +44,7 @@ interface StageTimerViewProps {
   isAdmin?: boolean;
   buzzerQueue?: BuzzerRecord[];
   onBuzz?: (teamId: number, teamName: string) => void;
-  onResetBuzzer?: () => void;
+  onResetBuzzer?: (consumedTeamId?: number) => void;
   onOpenTeamBuzzer?: () => void;
   currentTeamAuth?: TeamAccount | null;
   onGoToRandomTopic?: (teamId: number) => void;
@@ -312,6 +312,8 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
       note: rebuttalNote.trim(),
     });
 
+    onResetBuzzer?.(selectedDebaterTeamId);
+
     soundManager.playScoreAward();
     setSelectedDebaterTeamId(null);
     setRebuttalNote('');
@@ -453,7 +455,7 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
             </button>
             {onResetBuzzer && (
               <button
-                onClick={onResetBuzzer}
+                onClick={() => onResetBuzzer()}
                 className="px-3 py-2 rounded-xl bg-black/25 hover:bg-black/40 text-white font-semibold text-xs transition-colors flex items-center gap-1.5"
                 title="Xóa danh sách chuông để mở lượt bấm mới"
               >

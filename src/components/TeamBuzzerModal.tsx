@@ -32,7 +32,7 @@ interface TeamBuzzerModalProps {
   onLogoutTeam: () => void;
   buzzerQueue: BuzzerRecord[];
   onBuzz: (teamId: number, teamName: string) => void;
-  onResetBuzzer: () => void;
+  onResetBuzzer: (consumedTeamId?: number) => void;
   presentingTeamId: number | null;
   stageTimerState?: StageTimerState | null;
 }
@@ -136,6 +136,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     } catch {}
     return [];
   });
+  const [blockedTeamIds, setBlockedTeamIds] = useState<number[]>(() => syncService.getBuzzerBlockedTeamIds());
 
   useEffect(() => {
     if (stageTimerState) {
@@ -162,6 +163,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
 
     const unsubBuzzer = syncService.subscribeBuzzer((newQueue) => {
       setLocalBuzzerQueue(newQueue);
+      setBlockedTeamIds(syncService.getBuzzerBlockedTeamIds());
     });
 
     return () => {
@@ -178,7 +180,10 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
         if (timer) setSyncedTimerState(timer);
       });
       syncService.fetchBuzzerQueue().then((queue) => {
-        if (queue) setLocalBuzzerQueue(queue);
+        if (queue) {
+          setLocalBuzzerQueue(queue);
+          setBlockedTeamIds(syncService.getBuzzerBlockedTeamIds());
+        }
       });
     }
   }, [isOpen]);
@@ -319,7 +324,8 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     : 0;
 
   // Always pressable by default unless the team has already clicked in the current queue
-  const canBuzzNow = !myBuzzRecord;
+  const canBuzzNow = !myBuzzRecord && safeBuzzerQueue.length === 0 && !isPresentingNow &&
+    !hasUsedAllRebuttals && !hasRebuttedInThisRound && !blockedTeamIds.includes(currentTeamAuth?.id || 0);
 
   const handleTriggerBuzzer = (targetTeamId?: number, targetTeamName?: string) => {
     const tId = targetTeamId ?? currentTeamAuth?.id;
@@ -327,7 +333,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     if (!tId || !tName) return;
 
     // Check if already in queue
-    if (safeBuzzerQueue.some((b) => b.teamId === tId)) {
+    if (safeBuzzerQueue.length > 0 || safeBuzzerQueue.some((b) => b.teamId === tId)) {
       soundManager.playDing();
       return;
     }
@@ -347,8 +353,6 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     setLocalBuzzerQueue(nextQueue);
 
     onBuzz(tId, tName);
-    syncService.buzz(tId, tName);
-    syncService.pushBuzzerQueue(nextQueue);
     setTimeout(() => setJustBuzzed(false), 1200);
   };
 
@@ -714,7 +718,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                       <span>Hàng Đợi Chuông Hiện Tại ({safeBuzzerQueue.length} đội)</span>
                     </span>
                     <button
-                      onClick={onResetBuzzer}
+                    onClick={() => onResetBuzzer()}
                       className="text-[11px] text-slate-400 hover:text-rose-600 font-bold flex items-center gap-1 transition-colors cursor-pointer"
                       title="Đặt lại chuông"
                     >

@@ -47,6 +47,7 @@ class SyncService {
   private latestTimerState: StageTimerState | null = null;
   private lastTimerSignature = '';
   private lastBuzzerJson = '';
+  private buzzerBlockedTeamIds: number[] = [];
   private lastSessionsJson = '';
   private topic = '';
 
@@ -255,6 +256,9 @@ class SyncService {
         } catch {}
       }
     } else if (payload.type === 'BUZZER_RESET') {
+      if (Number(payload.consumedTeamId) && !this.buzzerBlockedTeamIds.includes(Number(payload.consumedTeamId))) {
+        this.buzzerBlockedTeamIds.push(Number(payload.consumedTeamId));
+      }
       this.lastBuzzerJson = '[]';
       this.notifyBuzzerListeners([]);
       try {
@@ -599,6 +603,7 @@ class SyncService {
         const data = await res.json();
         if (data && data.success && Array.isArray(data.queue)) {
           const queue = data.queue as BuzzerRecord[];
+          this.buzzerBlockedTeamIds = Array.isArray(data.blockedTeamIds) ? data.blockedTeamIds : [];
           this.notifyBuzzerListeners(queue);
           return queue;
         }
@@ -634,6 +639,14 @@ class SyncService {
             rank: data.rank || queue.length,
           };
         }
+      } else {
+        const data = await res.json().catch(() => null);
+        const queue = Array.isArray(data?.queue) ? data.queue as BuzzerRecord[] : [];
+        if (queue.length) {
+          await this.pushBuzzerQueue(queue);
+          this.notifyBuzzerListeners(queue);
+        }
+        return { success: false, queue, rank: 0, message: data?.error };
       }
     } catch {}
 
@@ -658,10 +671,10 @@ class SyncService {
         timestamp: now,
         diffMs: now - firstTimestamp,
       };
-      const nextQueue = [...currentQueue, newRec];
+      const nextQueue = currentQueue.length > 0 ? currentQueue : [newRec];
       await this.pushBuzzerQueue(nextQueue);
       this.notifyBuzzerListeners(nextQueue);
-      return { success: true, queue: nextQueue, rank: nextQueue.length };
+      return { success: currentQueue.length === 0, queue: nextQueue, rank: currentQueue.length === 0 ? 1 : 0 };
     } catch {}
 
     return { success: false, queue: [], rank: 0 };
@@ -670,19 +683,30 @@ class SyncService {
   /**
    * Reset buzzer queue across all devices
    */
-  public async resetBuzzerQueue(): Promise<void> {
+  public async resetBuzzerQueue(consumedTeamId?: number): Promise<void> {
     try {
-      await fetch('/api/buzzer/reset', { method: 'POST' });
+      const res = await fetch('/api/buzzer/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consumedTeamId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data?.blockedTeamIds)) this.buzzerBlockedTeamIds = data.blockedTeamIds;
     } catch {}
 
     // Publish reset event to Cloud SSE
     this.publishToCloud({
       type: 'BUZZER_RESET',
       queue: [],
+      consumedTeamId,
     });
 
     await this.pushBuzzerQueue([]);
     this.notifyBuzzerListeners([]);
+  }
+
+  public getBuzzerBlockedTeamIds(): number[] {
+    return [...this.buzzerBlockedTeamIds];
   }
 
   /**
