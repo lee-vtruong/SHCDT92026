@@ -93,5 +93,6 @@ export interface StageTimerState {
   isRunning: boolean;
   currentTeamId: number;
   updatedAt: number;
+  buzzerManualUnlocked?: boolean;
 }
 

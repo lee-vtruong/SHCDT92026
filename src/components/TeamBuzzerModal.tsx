@@ -177,6 +177,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
   // Fetch immediately whenever modal opens
   useEffect(() => {
     if (isOpen) {
+      syncService.queryTimerState();
       syncService.fetchTimerState().then((timer) => {
         if (timer) setSyncedTimerState(timer);
       });
@@ -297,8 +298,10 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     )
   );
 
-  // Strict constraint: Buzzer only unlocks during the 1-minute countdown of the Rebuttal phase
+  // Buzzer availability: Unlocked throughout the Rebuttal phase (as long as timeLeft > 0) OR if manually unlocked by MC
   const isRebuttalPhase = syncedTimerState.phase === 'rebuttal';
+  const isManualUnlocked = Boolean(syncedTimerState.buzzerManualUnlocked);
+  const isBuzzerOpen = isManualUnlocked || (isRebuttalPhase && syncedTimerState.timeLeft > 0);
   const isRebuttalCountdownRunning = isRebuttalPhase && syncedTimerState.isRunning && syncedTimerState.timeLeft > 0;
 
   const myBuzzRecord = currentTeamAuth
@@ -309,7 +312,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
     : 0;
 
   const canBuzzNow =
-    isRebuttalCountdownRunning &&
+    isBuzzerOpen &&
     !isPresentingNow &&
     !myBuzzRecord &&
     !hasUsedAllRebuttals &&
@@ -338,18 +341,18 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
       setTimeout(() => setErrorMsg(''), 3000);
       return;
     }
-    if (!isRebuttalCountdownRunning) {
+
+    if (!isBuzzerOpen) {
       soundManager.playError();
-      if (isRebuttalPhase && !syncedTimerState.isRunning && syncedTimerState.timeLeft > 0) {
-        setErrorMsg('Chờ MC/Trọng tài bấm "BẮT ĐẦU" đếm ngược 1 phút để mở chuông!');
-      } else if (isRebuttalPhase && syncedTimerState.timeLeft <= 0) {
-        setErrorMsg('Đã hết 1 phút phản biện, chuông đã tự động khóa lại!');
+      if (isRebuttalPhase && syncedTimerState.timeLeft <= 0) {
+        setErrorMsg('Đã hết 1 phút phản biện (00:00), chuông đã tự động khóa lại!');
       } else {
-        setErrorMsg('Chuông chỉ mở trong 1 phút đếm ngược Phản Biện!');
+        setErrorMsg('Chuông chỉ mở trong Lượt Phản Biện (hoặc khi Ban Tổ Chức mở chuông)!');
       }
       setTimeout(() => setErrorMsg(''), 3500);
       return;
     }
+
     if (myBuzzRecord) return;
 
     soundManager.playBuzzer();
@@ -385,7 +388,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isRebuttalCountdownRunning ? (
+            {isBuzzerOpen ? (
               <span className="px-2.5 py-1 rounded-full bg-emerald-400 text-slate-950 text-xs font-black animate-pulse flex items-center gap-1 shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
                 <span>MỞ ({syncedTimerState.timeLeft}s)</span>
@@ -614,15 +617,15 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                     </p>
                   </div>
                 </div>
-              ) : isRebuttalCountdownRunning ? (
-                <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs font-semibold flex items-center gap-3 text-left shadow-md animate-pulse">
+              ) : isBuzzerOpen ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs font-semibold flex items-center gap-3 text-left shadow-md">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Bell className="w-5 h-5 animate-bounce" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-extrabold text-sm text-emerald-900 uppercase tracking-wide">
-                        1 PHÚT PHẢN BIỆN ĐANG ĐẾM NGƯỢC!
+                        {syncedTimerState.isRunning ? '1 PHÚT PHẢN BIỆN ĐANG ĐẾM NGƯỢC!' : 'CHUÔNG PHẢN BIỆN ĐANG MỞ!'}
                       </span>
                       <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-mono font-black text-xs">
                         00:{syncedTimerState.timeLeft < 10 ? `0${syncedTimerState.timeLeft}` : syncedTimerState.timeLeft}
@@ -630,20 +633,6 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                     </div>
                     <p className="text-xs text-emerald-800 mt-1">
                       Chuông đang mở! Bấm nút đỏ bên dưới NGAY để giành quyền phản biện {presentingTeam ? presentingTeam.name : 'đội thi'} (Đội bạn còn {remainingRebuttals}/3 lượt).
-                    </p>
-                  </div>
-                </div>
-              ) : isRebuttalPhase && !syncedTimerState.isRunning && syncedTimerState.timeLeft > 0 ? (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-3 text-left">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-sm text-amber-900">
-                      ĐÃ VÀO LƯỢT PHẢN BIỆN — CHỜ ĐỒNG HỒ ĐẾM NGƯỢC
-                    </span>
-                    <p className="text-xs text-amber-800 mt-0.5">
-                      Chờ MC/Trọng tài bấm "BẮT ĐẦU" đếm ngược 1 phút trên sân khấu. Chuông sẽ tự động mở ngay khi đồng hồ chạy!
                     </p>
                   </div>
                 </div>
@@ -694,8 +683,8 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                       ? 'bg-amber-100 border-4 border-amber-300 text-amber-700 cursor-not-allowed opacity-85'
                       : isPresentingNow
                       ? 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
-                      : isRebuttalPhase && !syncedTimerState.isRunning && syncedTimerState.timeLeft > 0
-                      ? 'bg-amber-100 border-4 border-amber-300 text-amber-700 cursor-not-allowed opacity-80'
+                      : isRebuttalPhase && syncedTimerState.timeLeft <= 0
+                      ? 'bg-slate-200 border-4 border-slate-300 text-slate-400 cursor-not-allowed opacity-80'
                       : 'bg-slate-200 border-4 border-slate-300 text-slate-400 cursor-not-allowed opacity-75'
                   }`}
                 >
@@ -751,17 +740,7 @@ export const TeamBuzzerModal: React.FC<TeamBuzzerModalProps> = ({
                       />
                       <span className="text-xl font-black tracking-wide uppercase">BẤM CHUÔNG!</span>
                       <span className="text-[11px] font-semibold text-white/90 mt-0.5">
-                        Còn {syncedTimerState.timeLeft}s • Lượt {myRebuttalsUsed + 1}/3
-                      </span>
-                    </>
-                  ) : isRebuttalPhase && !syncedTimerState.isRunning && syncedTimerState.timeLeft > 0 ? (
-                    <>
-                      <Clock className="w-10 h-10 mb-1 text-amber-600" />
-                      <span className="text-base font-black tracking-wide uppercase text-center px-2 text-amber-900">
-                        CHỜ HIỆU LỆNH
-                      </span>
-                      <span className="text-[10px] font-semibold text-amber-700 mt-0.5">
-                        Tự động mở khi chạy giờ
+                        {syncedTimerState.isRunning ? `Còn ${syncedTimerState.timeLeft}s` : `Sẵn sàng (${syncedTimerState.timeLeft}s)`} • Lượt {myRebuttalsUsed + 1}/3
                       </span>
                     </>
                   ) : isRebuttalPhase && syncedTimerState.timeLeft <= 0 ? (

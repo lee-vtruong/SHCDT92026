@@ -104,6 +104,9 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
   const [timeLeft, setTimeLeft] = useState<number>(() => stageTimerState?.timeLeft ?? PHASE_DURATIONS.prepare);
   const [isRunning, setIsRunning] = useState<boolean>(() => stageTimerState?.isRunning ?? false);
   const [totalPhaseDuration, setTotalPhaseDuration] = useState<number>(() => stageTimerState?.totalDuration ?? PHASE_DURATIONS.prepare);
+  const [buzzerManualUnlocked, setBuzzerManualUnlocked] = useState<boolean>(
+    () => stageTimerState?.buzzerManualUnlocked ?? false
+  );
 
   // Sync state from stageTimerState when updated remotely or by App
   useEffect(() => {
@@ -112,6 +115,9 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
       setTimeLeft(stageTimerState.timeLeft);
       setTotalPhaseDuration(stageTimerState.totalDuration);
       setIsRunning(stageTimerState.isRunning);
+      if (stageTimerState.buzzerManualUnlocked !== undefined) {
+        setBuzzerManualUnlocked(stageTimerState.buzzerManualUnlocked);
+      }
       if (stageTimerState.currentTeamId && stageTimerState.currentTeamId !== currentTeamId) {
         setCurrentTeamId(stageTimerState.currentTeamId);
       }
@@ -128,13 +134,23 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
           totalDuration: partial.totalDuration ?? totalPhaseDuration,
           isRunning: partial.isRunning ?? isRunning,
           currentTeamId: partial.currentTeamId ?? currentTeamId,
+          buzzerManualUnlocked: partial.buzzerManualUnlocked ?? buzzerManualUnlocked,
           updatedAt: Date.now(),
         };
         onTimerStateChange(nextState);
       }
     },
-    [phase, timeLeft, totalPhaseDuration, isRunning, currentTeamId, onTimerStateChange]
+    [phase, timeLeft, totalPhaseDuration, isRunning, currentTeamId, buzzerManualUnlocked, onTimerStateChange]
   );
+
+  const handleToggleManualBuzzer = () => {
+    const next = !buzzerManualUnlocked;
+    setBuzzerManualUnlocked(next);
+    soundManager.playDing();
+    emitTimerChange({ buzzerManualUnlocked: next });
+  };
+
+  const isBuzzerOpen = buzzerManualUnlocked || (phase === 'rebuttal' && timeLeft > 0);
 
   // Modal / Form state for awarding rebuttal
   const [selectedDebaterTeamId, setSelectedDebaterTeamId] = useState<number | null>(null);
@@ -509,32 +525,50 @@ export const StageTimerView: React.FC<StageTimerViewProps> = ({
                 {PHASE_TITLES[phase].subtitle}
               </p>
 
-              {/* Live Buzzer Gate Status Indicator */}
-              <div className="mt-2.5 flex items-center justify-center">
-                {phase === 'rebuttal' ? (
-                  isRunning && timeLeft > 0 ? (
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs animate-pulse">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                      <Bell className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>CHUÔNG 10 ĐỘI ĐANG MỞ (Còn {timeLeft}s) — Các đội khác bấm ngay để phản biện!</span>
-                    </div>
-                  ) : timeLeft <= 0 ? (
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-xs">
-                      <Lock className="w-3.5 h-3.5 text-rose-600" />
-                      <span>HẾT GIỜ 1 PHÚT PHẢN BIỆN — Chuông bấm đã tự động khóa</span>
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold shadow-xs">
-                      <Lock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>CHUÔNG ĐANG KHÓA — Bấm "BẮT ĐẦU" đếm ngược 1 phút để mở chuông</span>
-                    </div>
-                  )
+              {/* Live Buzzer Gate Status Indicator & Manual Toggle */}
+              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+                {isBuzzerOpen ? (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                    <Bell className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
+                    <span>
+                      CHUÔNG ĐANG MỞ {timeLeft > 0 ? `(Còn ${timeLeft}s)` : ''} — 10 đội có thể bấm chuông!
+                    </span>
+                  </div>
                 ) : (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-medium">
-                    <Lock className="w-3 h-3 text-slate-400" />
-                    <span>Chuông phản biện đang khóa (Chỉ mở trong 1 phút đếm ngược Phản Biện)</span>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium">
+                    <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>
+                      {phase === 'rebuttal' && timeLeft <= 0
+                        ? 'HẾT 1 PHÚT PHẢN BIỆN — Chuông đã tự động khóa'
+                        : 'Chuông đang khóa (Chỉ mở khi vào Lượt Phản Biện)'}
+                    </span>
                   </div>
                 )}
+
+                {/* MC / Admin manual unlock/lock toggle */}
+                <button
+                  id="mc-toggle-manual-buzzer-btn"
+                  onClick={handleToggleManualBuzzer}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${
+                    buzzerManualUnlocked
+                      ? 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100'
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                  title={buzzerManualUnlocked ? 'Bấm để hủy mở chuông thủ công' : 'Bấm để mở cưỡng bức chuông cho các đội'}
+                >
+                  {buzzerManualUnlocked ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Khóa Chuông Lại</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Mở Chuông Thủ Công</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

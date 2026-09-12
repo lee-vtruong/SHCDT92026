@@ -22,13 +22,18 @@ type BuzzerListener = (queue: BuzzerRecord[]) => void;
 type SessionListener = (sessions: CloudTeamSession[]) => void;
 
 /**
- * Generate unique, safe room topic based on current domain/host
- * E.g., for shcdt9tro1.vercel.app -> cd9_shcdt9tro1_vercel_app
+ * Unified room topic for all devices, phones, laptops and testing environments
  */
+export const CONTEST_ROOM_TOPIC = 'chuyende9_debate_hpu_bus_master_v3';
+
 export function getSyncRoomTopic(): string {
-  if (typeof window === 'undefined') return 'cd9_rebuttal_global_bus';
-  const cleanHost = window.location.host.toLowerCase().replace(/[^a-z0-9]/g, '_');
-  return `cd9_bus_${cleanHost || 'default'}`;
+  if (typeof window === 'undefined') return CONTEST_ROOM_TOPIC;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get('room');
+    if (room) return `cd9_bus_${room.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  } catch {}
+  return CONTEST_ROOM_TOPIC;
 }
 
 class SyncService {
@@ -39,6 +44,7 @@ class SyncService {
   private activeSessionsMap = new Map<number, CloudTeamSession>();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private eventSource: EventSource | null = null;
+  private latestTimerState: StageTimerState | null = null;
   private lastTimerSignature = '';
   private lastBuzzerJson = '';
   private lastSessionsJson = '';
@@ -199,9 +205,18 @@ class SyncService {
     // Timer Sync
     if (payload.type === 'TIMER_UPDATE' && payload.timer) {
       let timer = payload.timer as StageTimerState;
+      if (
+        this.latestTimerState &&
+        timer.updatedAt &&
+        this.latestTimerState.updatedAt &&
+        timer.updatedAt < this.latestTimerState.updatedAt
+      ) {
+        return; // Ignore older payload
+      }
+
       if (timer.isRunning && timer.timeLeft > 0 && timer.updatedAt) {
         const elapsedSec = Math.floor((Date.now() - timer.updatedAt) / 1000);
-        if (elapsedSec > 0) {
+        if (elapsedSec > 0 && elapsedSec < 180) {
           const nextTimeLeft = Math.max(0, timer.timeLeft - elapsedSec);
           timer = {
             ...timer,
@@ -210,13 +225,22 @@ class SyncService {
           };
         }
       }
-      const sig = `${timer.phase}_${timer.isRunning}_${timer.currentTeamId}_${timer.totalDuration}_${timer.updatedAt}_${timer.timeLeft}`;
+
+      this.latestTimerState = timer;
+      const sig = `${timer.phase}_${timer.isRunning}_${timer.currentTeamId}_${timer.totalDuration}_${timer.updatedAt}_${timer.timeLeft}_${timer.buzzerManualUnlocked}`;
       if (sig !== this.lastTimerSignature) {
         this.lastTimerSignature = sig;
         this.notifyTimerListeners(timer);
         try {
           localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(timer));
         } catch {}
+      }
+    } else if (payload.type === 'TIMER_QUERY') {
+      if (this.latestTimerState) {
+        this.publishToCloud({
+          type: 'TIMER_UPDATE',
+          timer: this.latestTimerState,
+        });
       }
     } 
     // Buzzer Sync
@@ -321,6 +345,10 @@ class SyncService {
 
   public queryActiveSessions() {
     this.publishToCloud({ type: 'TEAM_SESSION_QUERY' });
+  }
+
+  public queryTimerState() {
+    this.publishToCloud({ type: 'TIMER_QUERY' });
   }
 
   public publishSessionClaim(session: CloudTeamSession) {
@@ -478,8 +506,9 @@ class SyncService {
    * Push timer state from MC / Stage screen
    */
   public async pushTimerState(state: StageTimerState): Promise<void> {
+    this.latestTimerState = state;
     const json = JSON.stringify(state);
-    const sig = `${state.phase}_${state.isRunning}_${state.currentTeamId}_${state.totalDuration}_${state.updatedAt}_${state.timeLeft}`;
+    const sig = `${state.phase}_${state.isRunning}_${state.currentTeamId}_${state.totalDuration}_${state.updatedAt}_${state.timeLeft}_${state.buzzerManualUnlocked}`;
     this.lastTimerSignature = sig;
 
     // 1. Save locally
@@ -520,12 +549,20 @@ class SyncService {
         const data = await res.json();
         if (data && data.success && data.timer) {
           const serverTimer = data.timer as StageTimerState;
+          if (
+            serverTimer.updatedAt &&
+            this.latestTimerState?.updatedAt &&
+            serverTimer.updatedAt < this.latestTimerState.updatedAt
+          ) {
+            return this.latestTimerState;
+          }
+          this.latestTimerState = serverTimer;
           this.notifyTimerListeners(serverTimer);
           return serverTimer;
         }
       }
     } catch {}
-    return null;
+    return this.latestTimerState;
   }
 
   /**
@@ -662,13 +699,20 @@ class SyncService {
           const data = await res.json();
           if (data && data.success && data.timer) {
             const serverTimer = data.timer as StageTimerState;
-            const sig = `${serverTimer.phase}_${serverTimer.isRunning}_${serverTimer.currentTeamId}_${serverTimer.totalDuration}_${serverTimer.updatedAt}_${serverTimer.timeLeft}`;
-            if (sig !== this.lastTimerSignature) {
-              this.lastTimerSignature = sig;
-              this.notifyTimerListeners(serverTimer);
-              try {
-                localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(serverTimer));
-              } catch {}
+            if (
+              !serverTimer.updatedAt ||
+              !this.latestTimerState?.updatedAt ||
+              serverTimer.updatedAt >= this.latestTimerState.updatedAt
+            ) {
+              this.latestTimerState = serverTimer;
+              const sig = `${serverTimer.phase}_${serverTimer.isRunning}_${serverTimer.currentTeamId}_${serverTimer.totalDuration}_${serverTimer.updatedAt}_${serverTimer.timeLeft}_${serverTimer.buzzerManualUnlocked}`;
+              if (sig !== this.lastTimerSignature) {
+                this.lastTimerSignature = sig;
+                this.notifyTimerListeners(serverTimer);
+                try {
+                  localStorage.setItem(SYNC_KEYS.STAGE_TIMER, JSON.stringify(serverTimer));
+                } catch {}
+              }
             }
           }
         }

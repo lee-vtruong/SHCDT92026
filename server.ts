@@ -102,6 +102,7 @@ interface StageTimerState {
   isRunning: boolean;
   currentTeamId: number;
   updatedAt: number;
+  buzzerManualUnlocked?: boolean;
 }
 
 interface BuzzerRecord {
@@ -118,9 +119,58 @@ let currentStageTimer: StageTimerState = {
   isRunning: false,
   currentTeamId: 1,
   updatedAt: Date.now(),
+  buzzerManualUnlocked: false,
 };
 
 let buzzerQueue: BuzzerRecord[] = [];
+
+function loadTimerFromDisk() {
+  try {
+    if (fs.existsSync(TIMER_FILE)) {
+      const raw = fs.readFileSync(TIMER_FILE, 'utf-8');
+      const saved = JSON.parse(raw);
+      if (saved && saved.phase) {
+        currentStageTimer = saved;
+      }
+    }
+  } catch (err) {
+    console.error('Could not load timer file:', err);
+  }
+}
+
+function saveTimerToDisk() {
+  try {
+    fs.writeFileSync(TIMER_FILE, JSON.stringify(currentStageTimer, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Could not save timer file:', err);
+  }
+}
+
+function loadBuzzerFromDisk() {
+  try {
+    if (fs.existsSync(BUZZER_FILE)) {
+      const raw = fs.readFileSync(BUZZER_FILE, 'utf-8');
+      const saved = JSON.parse(raw);
+      if (Array.isArray(saved)) {
+        buzzerQueue = saved;
+      }
+    }
+  } catch (err) {
+    console.error('Could not load buzzer file:', err);
+  }
+}
+
+function saveBuzzerToDisk() {
+  try {
+    fs.writeFileSync(BUZZER_FILE, JSON.stringify(buzzerQueue, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Could not save buzzer file:', err);
+  }
+}
+
+// Initial load for timer and buzzer
+loadTimerFromDisk();
+loadBuzzerFromDisk();
 
 export const app = express();
 const PORT = 3000;
@@ -147,6 +197,7 @@ apiRouter.get('/health', (req, res) => {
 
 // Stage Timer Sync Endpoints (Real-time synchronization across all devices & tabs)
 apiRouter.get('/timer', (req, res) => {
+  loadTimerFromDisk();
   let effectiveTimeLeft = currentStageTimer.timeLeft;
   if (currentStageTimer.isRunning && currentStageTimer.timeLeft > 0) {
     const elapsedSec = Math.floor((Date.now() - currentStageTimer.updatedAt) / 1000);
@@ -164,7 +215,8 @@ apiRouter.get('/timer', (req, res) => {
 });
 
 apiRouter.post('/timer', (req, res) => {
-  const { phase, timeLeft, totalDuration, isRunning, currentTeamId } = req.body;
+  loadTimerFromDisk();
+  const { phase, timeLeft, totalDuration, isRunning, currentTeamId, buzzerManualUnlocked } = req.body;
   const now = Date.now();
   currentStageTimer = {
     phase: phase || currentStageTimer.phase,
@@ -172,8 +224,10 @@ apiRouter.post('/timer', (req, res) => {
     totalDuration: typeof totalDuration === 'number' ? totalDuration : currentStageTimer.totalDuration,
     isRunning: typeof isRunning === 'boolean' ? isRunning : currentStageTimer.isRunning,
     currentTeamId: typeof currentTeamId === 'number' ? currentTeamId : currentStageTimer.currentTeamId,
+    buzzerManualUnlocked: typeof buzzerManualUnlocked === 'boolean' ? buzzerManualUnlocked : currentStageTimer.buzzerManualUnlocked,
     updatedAt: now,
   };
+  saveTimerToDisk();
   res.json({
     success: true,
     timer: currentStageTimer,
@@ -183,6 +237,7 @@ apiRouter.post('/timer', (req, res) => {
 
 // Buzzer Endpoints (Multi-device queue & ranking)
 apiRouter.get('/buzzer', (req, res) => {
+  loadBuzzerFromDisk();
   res.json({
     success: true,
     queue: buzzerQueue,
@@ -191,6 +246,7 @@ apiRouter.get('/buzzer', (req, res) => {
 });
 
 apiRouter.post('/buzzer/buzz', (req, res) => {
+  loadBuzzerFromDisk();
   const { teamId, teamName } = req.body;
   if (!teamId) {
     return res.status(400).json({ success: false, error: 'Thiếu thông tin đội' });
@@ -217,6 +273,7 @@ apiRouter.post('/buzzer/buzz', (req, res) => {
   };
 
   buzzerQueue.push(newRecord);
+  saveBuzzerToDisk();
 
   res.json({
     success: true,
@@ -228,6 +285,7 @@ apiRouter.post('/buzzer/buzz', (req, res) => {
 
 apiRouter.post('/buzzer/reset', (req, res) => {
   buzzerQueue = [];
+  saveBuzzerToDisk();
   res.json({ success: true, queue: [] });
 });
 
