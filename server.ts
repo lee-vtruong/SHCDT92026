@@ -306,6 +306,13 @@ apiRouter.post('/buzzer/buzz', (req, res) => {
 
 apiRouter.post('/buzzer/reset', (req, res) => {
   loadBuzzerFromDisk();
+  const clearBlocked = req.body?.clearBlocked === true;
+  if (clearBlocked) {
+    if (req.body?.adminPassword !== 'admin123') {
+      return res.status(403).json({ success: false, error: 'Sai mật khẩu quản trị viên' });
+    }
+    buzzerBlockedTeamIds = [];
+  }
   const consumedTeamId = Number(req.body?.consumedTeamId);
   // Chỉ khóa đội thực sự thắng chuông, không tin một teamId tùy ý từ client.
   if (consumedTeamId && buzzerQueue[0]?.teamId === consumedTeamId && !buzzerBlockedTeamIds.includes(consumedTeamId)) {
