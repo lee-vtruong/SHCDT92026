@@ -111,6 +111,7 @@ class SyncService {
 
     // 5. Query online sessions from peers
     this.queryActiveSessions();
+    this.queryBuzzerState();
 
     // 6. Background fallback polling
     this.startPolling(800);
@@ -283,6 +284,12 @@ class SyncService {
       try {
         localStorage.setItem(SYNC_KEYS.BUZZER_QUEUE, '[]');
       } catch {}
+    } else if (payload.type === 'BUZZER_QUERY') {
+      let queue: BuzzerRecord[] = [];
+      try { queue = JSON.parse(this.lastBuzzerJson || '[]'); } catch {}
+      if (queue.length > 0) {
+        this.publishToCloud({ type: 'BUZZER_UPDATE', queue });
+      }
     }
     // Team Session Claims & Heartbeats (1 device per team enforcement across Cloud)
     else if (payload.type === 'TEAM_SESSION_CLAIM' && payload.session) {
@@ -375,12 +382,21 @@ class SyncService {
    */
   private async publishToCloud(payload: any): Promise<void> {
     try {
-      await fetch(`https://ntfy.sh/${this.topic}`, {
+      // Publishing JSON directly with application/json makes ntfy interpret our
+      // payload as its publish schema (which requires a `message` field). Send
+      // the serialized event as plain text so SSE clients receive it in
+      // data.message and can parse the original event correctly.
+      const res = await fetch(`https://ntfy.sh/${this.topic}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         body: JSON.stringify(payload),
       });
-    } catch {}
+      if (!res.ok) {
+        throw new Error(`Realtime publish failed (${res.status})`);
+      }
+    } catch (error) {
+      console.error('Realtime synchronization failed:', error);
+    }
   }
 
   public queryActiveSessions() {
@@ -389,6 +405,10 @@ class SyncService {
 
   public queryTimerState() {
     this.publishToCloud({ type: 'TIMER_QUERY' });
+  }
+
+  public queryBuzzerState() {
+    this.publishToCloud({ type: 'BUZZER_QUERY' });
   }
 
   public publishSessionClaim(session: CloudTeamSession) {
