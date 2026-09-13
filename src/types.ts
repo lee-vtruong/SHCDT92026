@@ -46,6 +46,8 @@ export interface Team {
   presentationNotes?: string;
 }
 
+export type ManualFinalScores = Record<number, number | null>;
+
 export interface Topic {
   id: number;
   title: string;

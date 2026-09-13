@@ -13,7 +13,7 @@ import {
   ChevronRight,
   RotateCcw
 } from 'lucide-react';
-import { Team, Topic, RebuttalRecord, JudgeScoreRecord } from '../types';
+import { Team, Topic, RebuttalRecord, JudgeScoreRecord, ManualFinalScores } from '../types';
 import { rankTeams, RankedTeam, calculatePresentationTotal, getTeamRebuttals } from '../utils/scoring';
 import { soundManager } from '../utils/audio';
 
@@ -23,6 +23,9 @@ interface LeaderboardViewProps {
   rebuttals: RebuttalRecord[];
   onSelectTeamForScoring: (teamId: number) => void;
   onOpenAdminReset?: () => void;
+  isAdmin?: boolean;
+  manualFinalScores?: ManualFinalScores;
+  onUpdateManualFinalScore?: (teamId: number, score: number | null) => void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
@@ -31,9 +34,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   rebuttals,
   onSelectTeamForScoring,
   onOpenAdminReset,
+  isAdmin = false,
+  manualFinalScores = {},
+  onUpdateManualFinalScore,
 }) => {
   const [inspectTeam, setInspectTeam] = useState<RankedTeam | null>(null);
-  const ranked = rankTeams(teams, rebuttals);
+  const ranked = rankTeams(teams, rebuttals, manualFinalScores);
 
   const handleCelebrate = () => {
     soundManager.playScoreAward();
@@ -359,10 +365,36 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
                     {/* Overall Total */}
                     <td className="py-3.5 px-4 text-right">
-                      <span className="text-base sm:text-lg font-black font-mono text-slate-900">
-                        {r.overallTotal}
-                      </span>
-                      <span className="text-xs text-slate-400 ml-1">đ</span>
+                      {isAdmin && onUpdateManualFinalScore ? (
+                        <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={150}
+                            step={0.01}
+                            value={manualFinalScores[r.team.id] ?? ''}
+                            placeholder={String(r.overallTotal)}
+                            onChange={(e) => {
+                              if (e.target.value === '') return onUpdateManualFinalScore(r.team.id, null);
+                              const value = Math.max(0, Math.min(150, Number(e.target.value)));
+                              if (Number.isFinite(value)) onUpdateManualFinalScore(r.team.id, value);
+                            }}
+                            className="w-24 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-right text-base font-black font-mono text-slate-900 outline-none focus:ring-2 focus:ring-amber-400"
+                            title="Admin nhập điểm tổng kết thủ công (0–150)"
+                          />
+                          <span className="text-[10px] font-bold text-amber-700">
+                            {typeof manualFinalScores[r.team.id] === 'number' ? 'Điểm nhập tay' : `Tự động: ${r.overallTotal}đ`}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-base sm:text-lg font-black font-mono text-slate-900">{r.overallTotal}</span>
+                          <span className="text-xs text-slate-400 ml-1">đ</span>
+                          {typeof manualFinalScores[r.team.id] === 'number' && (
+                            <span className="block text-[10px] font-bold text-amber-700">Điểm tổng kết</span>
+                          )}
+                        </>
+                      )}
                     </td>
 
                     {/* Action */}

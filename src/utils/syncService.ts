@@ -1,9 +1,10 @@
-import { StageTimerState, BuzzerRecord } from '../types';
+import { StageTimerState, BuzzerRecord, ManualFinalScores } from '../types';
 
 export const SYNC_KEYS = {
   STAGE_TIMER: 'chuyende_stage_timer_state_v2',
   BUZZER_QUEUE: 'chuyende_buzzer_queue_v2',
   ACTIVE_SESSIONS: 'chuyende_active_team_sessions_v1',
+  MANUAL_FINAL_SCORES: 'chuyende_manual_final_scores_v1',
   BROADCAST_CHANNEL: 'chuyende_debate_bus_v1',
 };
 
@@ -20,6 +21,7 @@ export interface CloudTeamSession {
 type TimerListener = (timer: StageTimerState) => void;
 type BuzzerListener = (queue: BuzzerRecord[]) => void;
 type SessionListener = (sessions: CloudTeamSession[]) => void;
+type ManualScoresListener = (scores: ManualFinalScores) => void;
 
 /**
  * Unified room topic for all devices, phones, laptops and testing environments
@@ -41,6 +43,7 @@ class SyncService {
   private timerListeners: Set<TimerListener> = new Set();
   private buzzerListeners: Set<BuzzerListener> = new Set();
   private sessionListeners: Set<SessionListener> = new Set();
+  private manualScoresListeners: Set<ManualScoresListener> = new Set();
   private activeSessionsMap = new Map<number, CloudTeamSession>();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private eventSource: EventSource | null = null;
@@ -50,11 +53,17 @@ class SyncService {
   private buzzerBlockedTeamIds: number[] = [];
   private lastBuzzerResetAt = 0;
   private lastSessionsJson = '';
+  private manualFinalScores: ManualFinalScores = {};
+  private manualScoresUpdatedAt = 0;
   private topic = '';
 
   constructor() {
     this.topic = getSyncRoomTopic();
     this.loadSessionsFromLocal();
+    try {
+      const saved = localStorage.getItem(SYNC_KEYS.MANUAL_FINAL_SCORES);
+      if (saved) this.manualFinalScores = JSON.parse(saved);
+    } catch {}
     try {
       const savedBuzzer = localStorage.getItem(SYNC_KEYS.BUZZER_QUEUE);
       if (savedBuzzer) this.lastBuzzerJson = savedBuzzer;
@@ -72,6 +81,8 @@ class SyncService {
             this.notifyTimerListeners(data.timer);
           } else if (data.type === 'BUZZER_UPDATE' && Array.isArray(data.queue)) {
             this.notifyBuzzerListeners(data.queue);
+          } else if (data.type === 'MANUAL_SCORES_UPDATE' && data.scores) {
+            this.applyManualFinalScores(data.scores, Number(data.updatedAt) || Date.now());
           } else if (data.type === 'SESSIONS_UPDATE' && Array.isArray(data.sessions)) {
             this.handleSessionsArray(data.sessions);
           }
@@ -94,6 +105,10 @@ class SyncService {
             const parsed = JSON.parse(e.newValue);
             this.notifyBuzzerListeners(parsed);
           } catch {}
+        } else if (e.key === SYNC_KEYS.MANUAL_FINAL_SCORES && e.newValue) {
+          try {
+            this.applyManualFinalScores(JSON.parse(e.newValue), Date.now());
+          } catch {}
         } else if (e.key === SYNC_KEYS.ACTIVE_SESSIONS && e.newValue) {
           try {
             const list = JSON.parse(e.newValue);
@@ -112,6 +127,7 @@ class SyncService {
     // 5. Query online sessions from peers
     this.queryActiveSessions();
     this.queryBuzzerState();
+    this.queryManualFinalScores();
 
     // 6. Background fallback polling
     this.startPolling(800);
@@ -290,6 +306,16 @@ class SyncService {
       if (queue.length > 0) {
         this.publishToCloud({ type: 'BUZZER_UPDATE', queue });
       }
+    } else if (payload.type === 'MANUAL_SCORES_UPDATE' && payload.scores) {
+      this.applyManualFinalScores(payload.scores, Number(payload.updatedAt) || 0);
+    } else if (payload.type === 'MANUAL_SCORES_QUERY') {
+      if (this.manualScoresUpdatedAt || Object.keys(this.manualFinalScores).length > 0) {
+        this.publishToCloud({
+          type: 'MANUAL_SCORES_UPDATE',
+          scores: this.manualFinalScores,
+          updatedAt: this.manualScoresUpdatedAt,
+        });
+      }
     }
     // Team Session Claims & Heartbeats (1 device per team enforcement across Cloud)
     else if (payload.type === 'TEAM_SESSION_CLAIM' && payload.session) {
@@ -409,6 +435,41 @@ class SyncService {
 
   public queryBuzzerState() {
     this.publishToCloud({ type: 'BUZZER_QUERY' });
+  }
+
+  public queryManualFinalScores() {
+    this.publishToCloud({ type: 'MANUAL_SCORES_QUERY' });
+  }
+
+  public subscribeManualFinalScores(listener: ManualScoresListener): () => void {
+    this.manualScoresListeners.add(listener);
+    listener({ ...this.manualFinalScores });
+    return () => this.manualScoresListeners.delete(listener);
+  }
+
+  public pushManualFinalScores(scores: ManualFinalScores) {
+    this.manualFinalScores = { ...scores };
+    this.manualScoresUpdatedAt = Date.now();
+    try { localStorage.setItem(SYNC_KEYS.MANUAL_FINAL_SCORES, JSON.stringify(scores)); } catch {}
+    this.manualScoresListeners.forEach((listener) => listener({ ...scores }));
+    if (this.channel) {
+      try {
+        this.channel.postMessage({
+          type: 'MANUAL_SCORES_UPDATE',
+          scores,
+          updatedAt: this.manualScoresUpdatedAt,
+        });
+      } catch {}
+    }
+    this.publishToCloud({ type: 'MANUAL_SCORES_UPDATE', scores, updatedAt: this.manualScoresUpdatedAt });
+  }
+
+  private applyManualFinalScores(scores: ManualFinalScores, updatedAt: number) {
+    if (updatedAt < this.manualScoresUpdatedAt) return;
+    this.manualScoresUpdatedAt = updatedAt;
+    this.manualFinalScores = { ...scores };
+    try { localStorage.setItem(SYNC_KEYS.MANUAL_FINAL_SCORES, JSON.stringify(scores)); } catch {}
+    this.manualScoresListeners.forEach((listener) => listener({ ...scores }));
   }
 
   public publishSessionClaim(session: CloudTeamSession) {

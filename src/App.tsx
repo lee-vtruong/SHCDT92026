@@ -10,7 +10,7 @@ import { RandomTopicView } from './components/RandomTopicView';
 import { JudgeAuthModal } from './components/JudgeAuthModal';
 import { AdminResetModal, AdminResetOptions } from './components/AdminResetModal';
 import { TeamBuzzerModal } from './components/TeamBuzzerModal';
-import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord, StageTimerState } from './types';
+import { Team, Topic, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, BuzzerRecord, StageTimerState, ManualFinalScores } from './types';
 import { DEFAULT_TOPICS, INITIAL_TEAMS, generateRandomTeamTopicAssignment } from './data/defaultTopics';
 import { soundManager } from './utils/audio';
 import { authenticateJudge, canTeamRebut } from './utils/scoring';
@@ -198,6 +198,7 @@ export default function App() {
     } catch {}
     return [];
   });
+  const [manualFinalScores, setManualFinalScores] = useState<ManualFinalScores>({});
 
   // Stage timer & phase state synchronized across tabs
   const [stageTimerState, setStageTimerState] = useState<StageTimerState>(() => {
@@ -286,6 +287,7 @@ export default function App() {
         return newQueue;
       });
     });
+    const unsubManualScores = syncService.subscribeManualFinalScores(setManualFinalScores);
 
     // Initial server fetch
     syncService.fetchTimerState().then((serverTimer) => {
@@ -301,6 +303,7 @@ export default function App() {
       window.removeEventListener('storage', handleStorage);
       unsubTimer();
       unsubBuzzer();
+      unsubManualScores();
     };
   }, []);
 
@@ -457,6 +460,16 @@ export default function App() {
 
   const handleRemoveRebuttal = (id: string) => {
     setRebuttals((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleUpdateManualFinalScore = (teamId: number, score: number | null) => {
+    if (!isAdmin) return;
+    setManualFinalScores((prev) => {
+      const next = { ...prev, [teamId]: score };
+      if (score === null) delete next[teamId];
+      syncService.pushManualFinalScores(next);
+      return next;
+    });
   };
 
   // Handlers for Multi-Judge Scoring
@@ -917,6 +930,9 @@ export default function App() {
             rebuttals={rebuttals}
             onSelectTeamForScoring={handleGoToScoring}
             onOpenAdminReset={() => setIsAdminResetModalOpen(true)}
+            isAdmin={isAdmin}
+            manualFinalScores={manualFinalScores}
+            onUpdateManualFinalScore={handleUpdateManualFinalScore}
           />
         )}
 

@@ -1,4 +1,4 @@
-import { Team, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount } from '../types';
+import { Team, RebuttalRecord, RubricScores, JudgeInfo, JudgeScoreRecord, TeamAccount, ManualFinalScores } from '../types';
 
 export const JUDGE_ACCOUNTS: JudgeInfo[] = [
   { id: 1, name: 'Giám khảo 1', code: 'SHCDT91', isBackup: false },
@@ -180,13 +180,15 @@ export interface RankedTeam {
   rank: number;
 }
 
-export function rankTeams(teams: Team[], rebuttals: RebuttalRecord[]): RankedTeam[] {
+export function rankTeams(teams: Team[], rebuttals: RebuttalRecord[], manualFinalScores: ManualFinalScores = {}): RankedTeam[] {
   const analyzed: RankedTeam[] = teams.map((team) => {
     const { scores: effectiveScores, total: presentationTotal, judgeCount } =
       calculateEffectivePresentationScores(team);
     const argumentationScore = effectiveScores.argumentation || 0;
     const rebuttalBonus = calculateRebuttalBonus(team.id, rebuttals);
-    const overallTotal = Number((presentationTotal + rebuttalBonus).toFixed(2));
+    const automaticTotal = Number((presentationTotal + rebuttalBonus).toFixed(2));
+    const manualTotal = manualFinalScores[team.id];
+    const overallTotal = typeof manualTotal === 'number' ? manualTotal : automaticTotal;
     const rebuttalsUsed = getTeamRebuttals(team.id, rebuttals).length;
 
     return {
